@@ -1,36 +1,30 @@
 import requests
 import time
-import random
 
-# رابط سيرفرك العالمي على Render
+# رابط السيرفر الخاص بك
 URL = "https://car-diagnostics-b600.onrender.com/api/obd2"
 
-print("🚀 جاري بدء محاكاة سيارة أحمد...")
+print("🛠️  جاري إرسال بيانات فحص مرسيدس بنز (تجربة ضغط عالي)...")
 
-while True:
-    try:
-        # صنع بيانات وهمية (RPM وسرعة وحرارة)
-        data = {
-            "rpm": random.randint(800, 3500),
-            "speed": random.randint(0, 100),
-            "temp": random.randint(85, 105),
-            "voltage": 14.1,
-            "load": 25.5,
-            "vin": "AHMED-TEST-CAR",
-            "throttle": 20,
-            "dtc_code": "[]"
-        }
-        
-        # إرسال البيانات للسحاب
-        res = requests.post(URL, json=data)
-        
-        if res.status_code == 200:
-            print(f"✅ تم الإرسال بنجاح! RPM: {data['rpm']} | Speed: {data['speed']}")
-        else:
-            print(f"❌ السيرفر مشغول حالياً (Status: {res.status_code})")
-            
-        time.sleep(1) # إرسال رقم جديد كل ثانية
-        
-    except Exception as e:
-        print(f"⚠️ خطأ: تأكد من اتصالك بالإنترنت! {e}")
-        time.sleep(5)
+# بيانات المحاكاة: سيارة مرسيدس مع عطل في نظام الـ ABS وضغط الوقود
+test_data = {
+    "rpm": 5800,           # دوران مرتفع
+    "speed": 210,          # سرعة عالية جداً
+    "temp": 108,           # حرارة مرتفعة قليلاً (أداء رياضي)
+    "voltage": 14.6,       # شحن الدينامو ممتاز
+    "vin": "WDC123456789",  # WDC = Mercedes-Benz 🇩🇪
+    "load": 95,            # حمل محرك عالٍ
+    "dtc_code": "u0121",   # عطل فقدان الاتصال بنظام الـ ABS
+    "throttle": 88,
+    "intake": 45,
+    "timing": 22
+}
+
+try:
+    response = requests.post(URL, json=test_data)
+    if response.status_code == 200:
+        print("✅ تم التحديث! افتح المتصفح الآن وشوف 'الوحش الألماني'.")
+    else:
+        print(f"❌ فشل الإرسال: {response.status_code}")
+except Exception as e:
+    print(f"❌ خطأ في الاتصال: {e}")

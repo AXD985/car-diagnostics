@@ -3,6 +3,13 @@ import cors from 'cors';
 import http from 'http';
 import { Server } from 'socket.io';
 
+const cors = require('cors');
+app.use(cors({ origin: "*" }));
+
+const incoming = await response.json();
+console.log("Data received:", incoming);
+setData(incoming);setData(incoming);
+
 const app = express();
 app.use(cors());
 app.use(express.json());
