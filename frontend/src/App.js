@@ -8,7 +8,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
  */
 
 // رابط السيرفر العالمي الخاص بك على Render
-const API_URL = "https://car-diagnostics-backend.onrender.com/api/obd2";
+const API_URL = "https://car-diagnostics-b600.onrender.com/api/obd2";
 
 export default function App() {
   // 1. إدارة البيانات والحالات
