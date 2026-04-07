@@ -3,7 +3,7 @@ import time
 import random
 
 # رابط سيرفرك العالمي على Render
-URL = "https://car-diagnostics-backend.onrender.com/api/obd2"
+URL = "https://car-diagnostics-b600.onrender.com/api/obd2"
 
 print("🚀 جاري بدء محاكاة سيارة أحمد...")
 
