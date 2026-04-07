@@ -3,7 +3,6 @@ import { RadialGauge } from 'canvas-gauges';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 /**
- * نظام V-CORE TITAN MAX PRO - النسخة الإمبراطورية الكاملة (للمهندس أحمد)
  * تم التعديل للربط مع سيرفر Render السحابي مع الحفاظ على كافة المزايا
  */
 
@@ -148,7 +147,6 @@ export default function App() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #1a1a1a', paddingBottom: '15px', marginBottom: '30px' }}>
         <div>
           <h1 style={{ color: '#00ffcc', margin: 0, letterSpacing: '2px', fontSize: '2.2rem' }}>TITAN PRO MAX</h1>
-          <p style={{ color: '#444', margin: 0, fontWeight: 'bold' }}>ENGINEER: AHMED | SYSTEM: ACTIVE</p>
         </div>
         <input 
           type="text" 
