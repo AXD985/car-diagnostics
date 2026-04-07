@@ -1,30 +1,51 @@
+import obd
 import requests
 import time
 
-# رابط السيرفر الخاص بك
+# 1. الاتصال بالسيارة
+# ملاحظة: إذا كنت تعرف رقم الـ COM Port اكتبه هنا، مثلاً: portstr="COM3"
+connection = obd.OBD() 
+
+# رابط السيرفر الخاص بك على Render
 URL = "https://car-diagnostics-b600.onrender.com/api/obd2"
 
-print("🛠️  جاري إرسال بيانات فحص مرسيدس بنز (تجربة ضغط عالي)...")
+print("📡 بدأ استقبال البيانات من الحساسات...")
 
-# بيانات المحاكاة: سيارة مرسيدس مع عطل في نظام الـ ABS وضغط الوقود
-test_data = {
-    "rpm": 5800,           # دوران مرتفع
-    "speed": 210,          # سرعة عالية جداً
-    "temp": 108,           # حرارة مرتفعة قليلاً (أداء رياضي)
-    "voltage": 14.6,       # شحن الدينامو ممتاز
-    "vin": "WDC123456789",  # WDC = Mercedes-Benz 🇩🇪
-    "load": 95,            # حمل محرك عالٍ
-    "dtc_code": "u0121",   # عطل فقدان الاتصال بنظام الـ ABS
-    "throttle": 88,
-    "intake": 45,
-    "timing": 22
-}
+while True:
+    if connection.is_connected():
+        # قراءة الحساسات الأساسية
+        rpm = connection.query(obd.commands.RPM).value.magnitude
+        speed = connection.query(obd.commands.SPEED).value.magnitude
+        temp = connection.query(obd.commands.COOLANT_TEMP).value.magnitude
+        voltage = connection.query(obd.commands.CONTROL_MODULE_VOLTAGE).value.magnitude
+        
+        # قراءة رقم الشاصي (VIN)
+        vin_query = connection.query(obd.commands.VIN)
+        vin_code = str(vin_query.value) if vin_query.value else "UNKNOWN"
 
-try:
-    response = requests.post(URL, json=test_data)
-    if response.status_code == 200:
-        print("✅ تم التحديث! افتح المتصفح الآن وشوف 'الوحش الألماني'.")
+        # قراءة أكواد الأعطال (DTC)
+        dtc_query = connection.query(obd.commands.GET_DTC)
+        # نأخذ أول كود عطل إذا وجد
+        dtc_code = dtc_query.value[0][0] if dtc_query.value else ""
+
+        # تجهيز البيانات للإرسال
+        data_to_send = {
+            "rpm": int(rpm),
+            "speed": int(speed),
+            "temp": int(temp),
+            "voltage": round(float(voltage), 1),
+            "vin": vin_code,
+            "dtc_code": dtc_code,
+            "load": 50 # يمكنك إضافة حساس الـ LOAD أيضاً
+        }
+
+        try:
+            requests.post(URL, json=data_to_send)
+            print(f"✅ تم الإرسال: RPM={int(rpm)} | VIN={vin_code}")
+        except:
+            print("❌ فشل الاتصال بالسيرفر")
+
     else:
-        print(f"❌ فشل الإرسال: {response.status_code}")
-except Exception as e:
-    print(f"❌ خطأ في الاتصال: {e}")
+        print("🔄 جاري محاولة الاتصال بالقطعة... تأكد من تشغيل سويتش السيارة")
+    
+    time.sleep(1) # تحديث كل ثانية
