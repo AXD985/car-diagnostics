@@ -2,12 +2,12 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { RadialGauge } from 'canvas-gauges';
 import { AreaChart, Area, CartesianGrid, ResponsiveContainer } from 'recharts';
 
-// تم تعديل الروابط لتتوافق مع تشغيل السيرفر على جهازك الشخصي
+// الروابط الخاصة بالسيرفر المحلي
 const API_URL = "http://127.0.0.1:5000/api/obd2";
 const CMD_URL = "http://127.0.0.1:5000/api/command";
 
 export default function App() {
-  // حالة البيانات الشاملة لجميع الحساسات
+  // الحالة الشاملة للحساسات (تم التأكد من وجود الـ 6 حساسات هنا)
   const [data, setData] = useState({ 
     rpm: 0, temp: 0, speed: 0, voltage: 12.6, load: 0, 
     vin: "", dtc_code: "", throttle: 0, intake: 0, timing: 0 
@@ -20,7 +20,7 @@ export default function App() {
   const rpmG = useRef(null);
   const tempG = useRef(null);
 
-  // --- 1. قاعدة البيانات الموسعة للأعطال والكلمات المفتاحية ---
+  // قاعدة بيانات الأعطال
   const geminiDatabase = useMemo(() => ({
     "p0011": "خلل في توقيت عمود الكامات (Camshaft). افحص مستوى ونظافة الزيت وحساس الـ VVT.",
     "p0300": "احتراق غير منتظم عشوائي (Misfire). افحص البواجي والكويلات فوراً.",
@@ -40,7 +40,6 @@ export default function App() {
     "كتمة": "تحقق من صفاية البنزين، بخاخات الوقود، أو انسداد في منظومة العادم."
   }), []);
 
-  // --- 2. نظام التعرف على ماركة السيارة من الـ VIN ---
   const getCarMake = (vin) => {
     if (!vin || vin === "") return "جاري التعرف على المركبة...";
     const prefix = vin.substring(0, 3).toUpperCase();
@@ -54,18 +53,15 @@ export default function App() {
     return map[prefix] || "مركبة ذكية متصلة 🚗";
   };
 
-  // --- 3. نظام تحليل الأداء اللحظي (الذكاء الاصطناعي لتيتان) ---
   const performanceStatus = useMemo(() => {
     if (!isConnected) return "بانتظار البيانات لبدء التحليل...";
     const { rpm, throttle, load, voltage, temp } = data;
     if (throttle > 60 && rpm < 2500 && load > 80) return "⚠️ ملاحظة: حمل مرتفع مع RPM منخفض. قد يكون هناك كتمة في المحرك.";
     if (voltage < 13.0 && rpm > 1000) return "🔋 تنبيه: الجهد منخفض أثناء التشغيل. افحص الدينامو.";
-    if (rpm > 5000) return "🔥 أداء عالي: المحرك في نطاق القوة القصوى.";
     if (temp > 105 && rpm > 3000) return "🌡️ تحذير: الحرارة ترتفع مع الضغط. خفف السرعة فوراً.";
     return "✅ جميع الأنظمة تعمل بتناغم مثالي حالياً.";
   }, [data, isConnected]);
 
-  // --- 4. معالجة أوامر الفحص والمسح ---
   const sendOBDCommand = async (mode) => {
     try {
       const response = await fetch(CMD_URL, {
@@ -82,13 +78,11 @@ export default function App() {
         }
       }
     } catch (e) { 
-        alert("❌ فشل الاتصال بالسيرفر المحلي (تأكد من تشغيل ملف البايثون bridge.py)"); 
+        alert("❌ فشل الاتصال بالسيرفر المحلي"); 
     }
   };
 
-  // --- 5. تحديث البيانات والرسومات ---
   useEffect(() => {
-    // إعداد عداد الـ RPM
     if (!rpmG.current) {
         rpmG.current = new RadialGauge({
             renderTo: 'rpm-gauge', width: 220, height: 220, units: 'RPM x1000',
@@ -98,7 +92,6 @@ export default function App() {
             animatedValue: true, animationDuration: 500
         }).draw();
     }
-    // إعداد عداد الحرارة
     if (!tempG.current) {
         tempG.current = new RadialGauge({
             renderTo: 'temp-gauge', width: 220, height: 220, units: 'TEMP °C',
@@ -112,17 +105,13 @@ export default function App() {
     const fetchLiveData = async () => {
       try {
         const response = await fetch(API_URL);
-        if (!response.ok) throw new Error("Server not responding");
-        
         const incoming = await response.json();
         setIsConnected(true);
         setData(prev => ({ ...prev, ...incoming }));
         
-        // تحديث العدادات المادية
         if (rpmG.current) rpmG.current.value = (incoming.rpm || 0) / 1000;
         if (tempG.current) tempG.current.value = incoming.temp || 0;
         
-        // نظام الـ Freeze Frame عند ظهور عطل
         if (incoming.dtc_code && incoming.dtc_code !== "" && !freezeFrame) {
             setFreezeFrame({
                 code: incoming.dtc_code, speed: incoming.speed,
@@ -131,20 +120,13 @@ export default function App() {
             });
         }
 
-        // تحديث الرسم البياني
         setHistory(prev => [...prev, { rpm: incoming.rpm || 0 }].slice(-30));
 
-        // فحص قاعدة البيانات بحثاً عن العطل المكتشف
         const code = incoming.dtc_code?.toLowerCase().trim();
-        if (code && code !== "" && geminiDatabase[code]) {
+        if (code && geminiDatabase[code]) {
           setActiveError({ code: incoming.dtc_code.toUpperCase(), desc: geminiDatabase[code] });
-        } else if (code === "" || !code) { 
-          setActiveError(null); 
         }
-        
-      } catch (e) { 
-          setIsConnected(false); 
-      }
+      } catch (e) { setIsConnected(false); }
     };
 
     const interval = setInterval(fetchLiveData, 1000);
@@ -154,36 +136,35 @@ export default function App() {
   return (
     <div style={{ backgroundColor: '#000', color: '#fff', minHeight: '100vh', padding: '15px', direction: 'rtl', fontFamily: 'Arial' }}>
       
-      {/* الهيدر */}
+      {/* الهيدر ومعلومات السيارة */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
         <div>
           <h1 style={{ color: '#00ffcc', margin: 0, fontSize: '1.4rem' }}>TITAN PRO MAX V5.7</h1>
           <small style={{color: isConnected ? '#00ff00' : '#ff1e1e', fontWeight: 'bold'}}>
-              {isConnected ? "● ONLINE (جهازك متصل)" : "○ OFFLINE (تأكد من تشغيل bridge.py)"}
+              {isConnected ? "● ONLINE" : "○ OFFLINE"}
           </small>
         </div>
       </div>
 
-      {/* معلومات السيارة والـ VIN */}
       <div style={{ background: '#080808', padding: '15px', borderRadius: '15px', border: '1px solid #222', marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h2 style={{ margin: 0, color: '#00ffcc', fontSize: '1.1rem' }}>{getCarMake(data.vin)}</h2>
           <code style={{ color: '#444' }}>VIN: {data.vin || "---"}</code>
         </div>
-        <div style={{ fontSize: '2rem' }}>{data.vin?.startsWith("W") ? "🇩🇪" : "🚗"}</div>
+        <div style={{ fontSize: '2rem' }}>🚗</div>
       </div>
 
-      {/* توزيع الواجهة الرئيسي */}
+      {/* توزيع الواجهة */}
       <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr 300px', gap: '15px' }}>
         
-        {/* العمود الأيمن (في الـ RTL هو الأيسر): العدادات الدائرية */}
+        {/* العمود الأيمن: العدادات الدائرية */}
         <div style={{ background: '#080808', padding: '15px', borderRadius: '25px', textAlign: 'center', border: '1px solid #111' }}>
           <canvas id="rpm-gauge"></canvas>
           <hr style={{borderColor: '#111', margin: '15px 0'}} />
           <canvas id="temp-gauge"></canvas>
         </div>
 
-        {/* العمود الأوسط: الرسم البياني والحساسات الرقمية */}
+        {/* العمود الأوسط: الرسم البياني والحساسات الـ 6 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           <div style={{ height: '220px', background: '#080808', padding: '10px', borderRadius: '25px', border: '1px solid #111' }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -194,50 +175,41 @@ export default function App() {
             </ResponsiveContainer>
           </div>
           
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+          {/* هنا الـ 6 حساسات رقمية بدلاً من 4 */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
             {[
               { label: 'السرعة', val: data.speed, unit: 'km/h' },
               { label: 'الجهد', val: data.voltage, unit: 'V' },
               { label: 'الحمل', val: data.load, unit: '%' },
-              { label: 'البوابة', val: data.throttle, unit: '%' }
+              { label: 'البوابة', val: data.throttle, unit: '%' },
+              { label: 'هواء السحب', val: data.intake, unit: '°C' },
+              { label: 'توقيت الإشعال', val: data.timing, unit: '°' }
             ].map((s, i) => (
               <div key={i} style={{ background: '#080808', padding: '15px', borderRadius: '15px', border: '1px solid #111', textAlign: 'center' }}>
-                <small style={{ color: '#444', display: 'block' }}>{s.label}</small>
-                <strong style={{ fontSize: '1.2rem', color: '#fff' }}>{s.val} {s.unit}</strong>
+                <small style={{ color: '#444', display: 'block', fontSize: '0.7rem' }}>{s.label}</small>
+                <strong style={{ fontSize: '1.1rem', color: s.val > 0 ? '#00ffcc' : '#fff' }}>{s.val} {s.unit}</strong>
               </div>
             ))}
           </div>
         </div>
 
-        {/* العمود الأيسر (في الـ RTL هو الأيمن): أدوات الفحص والتحليل الذكي */}
+        {/* العمود الأيسر: أدوات الفحص */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          
-          {/* قسم الأزرار */}
           <div style={{ background: '#0a0a0a', padding: '15px', borderRadius: '20px', border: '2px solid #ff1e1e' }}>
             <h4 style={{ color: '#ff1e1e', marginTop: 0 }}>🛠️ أدوات الفحص</h4>
             <button onClick={() => sendOBDCommand("03")} style={{ width: '100%', padding: '10px', backgroundColor: '#333', color: '#fff', borderRadius: '8px', marginBottom: '8px', cursor: 'pointer', border: 'none' }}>🔍 فحص (Mode 03)</button>
             <button onClick={() => sendOBDCommand("04")} style={{ width: '100%', padding: '10px', backgroundColor: '#ff1e1e', color: '#fff', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', border: 'none' }}>🗑️ مسح (Mode 04)</button>
           </div>
 
-          {/* قسم التحليل الذكي والأعطال */}
           <div style={{ background: '#080808', padding: '15px', borderRadius: '20px', border: '1px solid #333', flex: 1 }}>
             <h4 style={{ color: '#00ffcc', margin: '0 0 10px 0' }}>✨ تحليل تيتان الذكي</h4>
             <div style={{ padding: '10px', background: '#111', borderRadius: '10px', fontSize: '0.8rem', color: '#00ffcc', marginBottom: '10px' }}>
                 {performanceStatus}
             </div>
-            
-            {/* عرض العطل النشط إذا وجد */}
             {activeError && (
               <div style={{ padding: '10px', background: '#ff1e1e15', borderRadius: '10px', border: '1px solid #ff1e1e33' }}>
                 <strong style={{color: '#ff4d4d'}}>⚠️ {activeError.code}</strong>
                 <p style={{fontSize: '0.75rem', margin: '5px 0 0 0'}}>{activeError.desc}</p>
-              </div>
-            )}
-
-            {/* عرض لقطة البيانات (Freeze Frame) */}
-            {freezeFrame && (
-              <div style={{ marginTop: '10px', padding: '8px', borderTop: '1px solid #222', fontSize: '0.7rem', color: '#666' }}>
-                آخر لقطة بيانات للعطل: {freezeFrame.code} في الساعة {freezeFrame.time}
               </div>
             )}
           </div>
