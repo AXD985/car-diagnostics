@@ -3,15 +3,14 @@ import { RadialGauge } from 'canvas-gauges';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 /**
- * نظام TITAN PRO MAX V5.0 - الإصدار الاحترافي المتكامل
- * يجمع بين التشخيص الذكي، التحكم الثنائي، ومراقبة الأداء اللحظي
+ * نظام TITAN PRO MAX V5.5 - النسخة النهائية المتكاملة
+ * تم تحسين التوزيع (Layout) لضمان ظهور لوحة التحكم ولقطة العطل
  */
 
 const API_URL = "https://car-diagnostics-b600.onrender.com/api/obd2";
 const CMD_URL = "https://car-diagnostics-b600.onrender.com/api/command";
 
 export default function App() {
-  // 1. إدارة البيانات والحالات
   const [data, setData] = useState({ 
     rpm: 0, temp: 0, speed: 0, voltage: 12.6, load: 0, 
     vin: "", dtc_code: "", throttle: 0, intake: 0, timing: 0 
@@ -24,7 +23,6 @@ export default function App() {
   const rpmG = useRef(null);
   const tempG = useRef(null);
 
-  // 2. قاعدة بيانات تيتان الميكانيكية الشاملة
   const geminiDatabase = useMemo(() => ({
     "p0011": "خلل في توقيت عمود الكامات (Camshaft). افحص مستوى ونظافة الزيت وحساس الـ VVT.",
     "p0016": "عدم تطابق إشارة الكرنك والكام شفت. قد يكون بسبب تمدد جنزير الماكينة (Timing Chain).",
@@ -40,7 +38,6 @@ export default function App() {
     "قير": "نتعة القير تعني نقص زيت أو اتساخ الفلتر. يتغير الزيت كل 60-80 ألف كم.",
   }), []);
 
-  // 3. دالة إرسال أمر مسح الأعطال
   const handleClearCodes = async () => {
     try {
       await fetch(CMD_URL, {
@@ -50,10 +47,10 @@ export default function App() {
       });
       alert("🚀 تم إرسال أمر مسح الأعطال للسيارة بنجاح!");
       setActiveError(null);
+      setFreezeFrame(null);
     } catch (e) { console.error("خطأ في الاتصال بالسيرفر"); }
   };
 
-  // 4. نظام التعرف الذكي على هوية المركبة (VIN)
   const getCarMake = (vin) => {
     if (!vin || vin === "") return "بانتظار الاتصال بالمركبة...";
     const prefix = vin.substring(0, 3).toUpperCase();
@@ -65,17 +62,16 @@ export default function App() {
     return map[prefix] || "مركبة عامة (Generic Car)";
   };
 
-  // 5. محرك جلب البيانات والعدادات
   useEffect(() => {
     rpmG.current = new RadialGauge({
-      renderTo: 'rpm-gauge', width: 300, height: 300, units: 'RPM x1000',
+      renderTo: 'rpm-gauge', width: 220, height: 220, units: 'RPM x1000',
       minValue: 0, maxValue: 8, majorTicks: ['0','1','2','3','4','5','6','7','8'],
       highlights: [{ from: 6.5, to: 8, color: 'rgba(200, 0, 0, .8)' }],
       colorPlate: '#050505', colorNumbers: '#00ffcc', needleType: 'arrow', valueBox: true, animationDuration: 500
     }).draw();
 
     tempG.current = new RadialGauge({
-      renderTo: 'temp-gauge', width: 300, height: 300, units: 'TEMP °C',
+      renderTo: 'temp-gauge', width: 220, height: 220, units: 'TEMP °C',
       minValue: 0, maxValue: 150, majorTicks: ['0','30','60','90','120','150'],
       colorPlate: '#050505', colorNumbers: '#fff', animationDuration: 800
     }).draw();
@@ -94,7 +90,6 @@ export default function App() {
         if (rpmG.current) rpmG.current.value = standardizedData.rpm / 1000;
         if (tempG.current) tempG.current.value = standardizedData.temp;
 
-        // تحديث لقطة العطل
         if (standardizedData.dtc_code && !freezeFrame) {
             setFreezeFrame({ ...standardizedData, time: new Date().toLocaleTimeString() });
         }
@@ -103,7 +98,7 @@ export default function App() {
           rpm: standardizedData.rpm, 
           load: standardizedData.load || 0, 
           time: new Date().toLocaleTimeString().slice(-5) 
-        }].slice(-50));
+        }].slice(-30));
         
         const errorCode = standardizedData.dtc_code?.toLowerCase().trim();
         if (errorCode && geminiDatabase[errorCode]) {
@@ -118,10 +113,10 @@ export default function App() {
   }, [geminiDatabase, freezeFrame]);
 
   const aiResponse = useMemo(() => {
-    if (!searchTerm) return "بانتظار استفسارك الميكانيكي (مثال: حرارة، زيت، P0300)...";
+    if (!searchTerm) return "بانتظار استفسارك الميكانيكي...";
     const term = searchTerm.toLowerCase().trim();
     const key = Object.keys(geminiDatabase).find(k => term.includes(k) || k.includes(term));
-    return key ? geminiDatabase[key] : "لم أجد هذا المصطلح، جرب كود عطل أو اسم قطعة.";
+    return key ? geminiDatabase[key] : "لم أجد هذا المصطلح.";
   }, [searchTerm, geminiDatabase]);
 
   const allSensors = [
@@ -134,97 +129,98 @@ export default function App() {
   ];
 
   return (
-    <div style={{ backgroundColor: '#000', color: '#fff', minHeight: '100vh', padding: '30px', direction: 'rtl', fontFamily: 'Arial' }}>
+    <div style={{ backgroundColor: '#000', color: '#fff', minHeight: '100vh', padding: '15px', direction: 'rtl', fontFamily: 'Arial', overflowX: 'hidden' }}>
       
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #1a1a1a', paddingBottom: '15px', marginBottom: '30px' }}>
-        <div>
-          <h1 style={{ color: '#00ffcc', margin: 0, fontSize: '2.2rem' }}>TITAN PRO MAX</h1>
-          <small style={{ color: '#444' }}>نظام التشخيص الميداني والتحكم الكامل</small>
-        </div>
+      {/* 1. Header & Search */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', gap: '10px' }}>
+        <h1 style={{ color: '#00ffcc', margin: 0, fontSize: '1.5rem' }}>TITAN PRO MAX V5.5</h1>
         <input 
           type="text" 
-          placeholder="🔍 ابحث عن عطل أو قطعة ميكانيكية..." 
-          style={{ width: '40%', padding: '12px 20px', borderRadius: '15px', border: '1px solid #222', backgroundColor: '#080808', color: '#00ffcc' }}
+          placeholder="🔍 ابحث عن عطل..." 
+          style={{ flex: 1, maxWidth: '400px', padding: '10px', borderRadius: '10px', backgroundColor: '#111', color: '#fff', border: '1px solid #333' }}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
       </div>
 
-      {/* VIN Recognition Card */}
-      <div style={{ background: 'linear-gradient(90deg, #080808 0%, #111 100%)', padding: '20px', borderRadius: '20px', marginBottom: '25px', border: '1px solid #00ffcc22', display: 'flex', alignItems: 'center', gap: '25px' }}>
-          <div style={{ fontSize: '3.5rem' }}>
-            {data.vin?.startsWith("W") ? "🇩🇪" : data.vin?.startsWith("J") ? "🇯🇵" : data.vin?.startsWith("1") ? "🇺🇸" : "🚗"}
-          </div>
-          <div>
-              <h4 style={{ color: '#00ffcc', margin: 0 }}>هوية المركبة الذكية:</h4>
-              <h2 style={{ margin: '5px 0' }}>{getCarMake(data.vin)}</h2>
-              <code style={{ color: '#444' }}>VIN: {data.vin || "---"}</code>
-          </div>
+      {/* 2. VIN & Identity Card */}
+      <div style={{ background: 'linear-gradient(90deg, #080808 0%, #121212 100%)', padding: '15px', borderRadius: '15px', border: '1px solid #222', marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h2 style={{ margin: 0, color: '#00ffcc', fontSize: '1.2rem' }}>{getCarMake(data.vin)}</h2>
+          <small style={{ color: '#666' }}>VIN: {data.vin || "WBS123456789"}</small>
+        </div>
+        <div style={{ fontSize: '2rem' }}>{data.vin?.startsWith("W") ? "🇩🇪" : "🚗"}</div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 0.7fr', gap: '25px' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
-          {/* العدادات */}
-          <div style={{ background: '#080808', padding: '30px', borderRadius: '30px', display: 'flex', justifyContent: 'space-around', border: '1px solid #111' }}>
-              <div style={{textAlign: 'center'}}><canvas id="rpm-gauge"></canvas><h4 style={{color: '#00ffcc'}}>دوران المحرك</h4></div>
-              <div style={{textAlign: 'center'}}><canvas id="temp-gauge"></canvas><h4 style={{color: '#fff'}}>درجة الحرارة</h4></div>
-          </div>
-          {/* الرسم البياني */}
-          <div style={{ background: '#080808', padding: '25px', borderRadius: '25px', height: '350px', border: '1px solid #111' }}>
-            <h3 style={{ color: '#333', marginBottom: '15px' }}>تحليل الأداء اللحظي</h3>
+      {/* 3. Main Grid Layout (3 Columns) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '15px' }}>
+        
+        {/* Column A: Gauges */}
+        <div style={{ background: '#080808', padding: '15px', borderRadius: '20px', textAlign: 'center', border: '1px solid #111' }}>
+          <div style={{display: 'inline-block'}}><canvas id="rpm-gauge"></canvas></div>
+          <h4 style={{margin: '5px 0', color: '#00ffcc'}}>دوران المحرك</h4>
+          <div style={{display: 'inline-block', marginTop: '10px'}}><canvas id="temp-gauge"></canvas></div>
+          <h4 style={{margin: '5px 0', color: '#fff'}}>الحرارة</h4>
+        </div>
+
+        {/* Column B: Analytics & Sensors */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+          {/* Chart */}
+          <div style={{ height: '220px', background: '#080808', padding: '15px', borderRadius: '20px', border: '1px solid #111' }}>
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={history}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#111" />
-                <Tooltip contentStyle={{backgroundColor: '#000', border: '1px solid #00ffcc'}} />
-                <Area type="monotone" dataKey="rpm" stroke="#00ffcc" fill="#00ffcc11" strokeWidth={3} />
-                <Area type="monotone" dataKey="load" stroke="#ffcc00" fill="#ffcc0011" />
+                <Area type="monotone" dataKey="rpm" stroke="#00ffcc" fill="#00ffcc11" isAnimationActive={false} strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
-          {/* لوحة التحكم الاحترافية - الميزة الجديدة */}
-          <div style={{ background: '#080808', padding: '25px', borderRadius: '25px', border: '1px solid #ff1e1e44' }}>
-             <h3 style={{ color: '#ff1e1e', marginTop: 0 }}>🛠️ أدوات التحكم والتشخيص</h3>
-             <button 
-               onClick={handleClearCodes}
-               style={{ width: '100%', padding: '15px', borderRadius: '12px', border: 'none', backgroundColor: '#ff1e1e', color: '#fff', fontWeight: 'bold', cursor: 'pointer', marginBottom: '15px' }}>
-               🗑️ مسح أكواد الأعطال (Reset)
-             </button>
-             
-             {freezeFrame && (
-               <div style={{ background: '#111', padding: '15px', borderRadius: '12px', border: '1px solid #333' }}>
-                 <strong style={{ color: '#aaa', fontSize: '0.8rem' }}>📸 لقطة العطل (Freeze Frame):</strong>
-                 <p style={{ margin: '5px 0', fontSize: '0.9rem' }}>
-                   السرعة: {freezeFrame.speed} كم | RPM: {freezeFrame.rpm}<br/>
-                   الحرارة: {freezeFrame.temp}°C | الوقت: {freezeFrame.time}
-                 </p>
-               </div>
-             )}
-          </div>
-
-          {/* مساعد تيتان الذكي */}
-          <div style={{ background: '#080808', padding: '25px', borderRadius: '25px', border: '1px solid #00ffcc44' }}>
-            <h3 style={{ color: '#00ffcc', marginTop: 0 }}>✨ مساعد TITAN</h3>
-            <p style={{ color: '#eee', background: '#0c0c0c', padding: '15px', borderRadius: '15px', borderRight: '4px solid #00ffcc' }}>{aiResponse}</p>
-            {activeError && (
-               <div style={{ marginTop: '15px', padding: '12px', background: '#ff1e1e22', borderRadius: '12px', color: '#ff4d4d', border: '1px solid #ff1e1e44' }}>
-                 <strong>⚠️ عطل نشط: {activeError.code}</strong>
-                 <p style={{ margin: '5px 0', fontSize: '0.9rem' }}>{activeError.desc}</p>
-               </div>
-            )}
-          </div>
-
-          {/* شبكة الحساسات الستة الكاملة */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-            {allSensors.map((item, index) => (
-              <div key={index} style={{ background: '#080808', padding: '20px', borderRadius: '20px', textAlign: 'center', border: '1px solid #111' }}>
-                <small style={{ color: '#444' }}>{item.label}</small>
-                <h2 style={{ margin: '5px 0', color: item.color }}>{item.val} <small style={{fontSize: '0.8rem'}}>{item.unit}</small></h2>
+          {/* Sensor Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            {allSensors.map((s, i) => (
+              <div key={i} style={{ background: '#080808', padding: '12px', borderRadius: '12px', textAlign: 'center', border: '1px solid #111' }}>
+                <small style={{ color: '#555', display: 'block' }}>{s.label}</small>
+                <strong style={{ fontSize: '1.1rem', color: s.color }}>{s.val} <small style={{fontSize: '0.7rem'}}>{s.unit}</small></strong>
               </div>
             ))}
           </div>
+        </div>
+
+        {/* Column C: Control & Diagnosis (The Tools you were missing) */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+          
+          {/* Control Panel */}
+          <div style={{ background: '#0a0a0a', padding: '20px', borderRadius: '20px', border: '2px solid #ff1e1e' }}>
+            <h3 style={{ color: '#ff1e1e', marginTop: 0, fontSize: '1rem' }}>🛠️ التحكم والبرمجة</h3>
+            <button 
+              onClick={handleClearCodes}
+              style={{ width: '100%', padding: '12px', backgroundColor: '#ff1e1e', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold' }}>
+              🗑️ مسح جميع الأعطال
+            </button>
+          </div>
+
+          {/* Freeze Frame */}
+          {freezeFrame && (
+            <div style={{ background: '#00ffcc05', padding: '15px', borderRadius: '15px', border: '1px solid #00ffcc44' }}>
+              <strong style={{ color: '#00ffcc', fontSize: '0.9rem' }}>📸 لقطة العطل (Freeze Frame):</strong>
+              <div style={{ fontSize: '0.8rem', marginTop: '8px', color: '#ccc' }}>
+                • السرعة: {freezeFrame.speed} | RPM: {freezeFrame.rpm}<br/>
+                • الحرارة: {freezeFrame.temp}°C | الوقت: {freezeFrame.time}
+              </div>
+            </div>
+          )}
+
+          {/* Assistant & Active Errors */}
+          <div style={{ background: '#080808', padding: '15px', borderRadius: '20px', border: '1px solid #333' }}>
+            <h4 style={{ color: '#00ffcc', margin: '0 0 10px 0' }}>✨ مساعد تيتان</h4>
+            <p style={{ fontSize: '0.85rem', color: '#aaa', backgroundColor: '#000', padding: '10px', borderRadius: '10px' }}>{aiResponse}</p>
+            
+            {activeError && (
+              <div style={{ marginTop: '10px', padding: '10px', background: '#ff1e1e15', borderRadius: '10px', border: '1px solid #ff1e1e33' }}>
+                <strong style={{color: '#ff4d4d', fontSize: '0.9rem'}}>⚠️ كود: {activeError.code}</strong>
+                <p style={{fontSize: '0.8rem', margin: '5px 0', color: '#eee'}}>{activeError.desc}</p>
+              </div>
+            )}
+          </div>
+
         </div>
       </div>
     </div>
