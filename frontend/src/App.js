@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { RadialGauge } from 'canvas-gauges';
 import { AreaChart, Area, CartesianGrid, ResponsiveContainer } from 'recharts';
 
+// تم تعديل الروابط لتتوافق مع تشغيل السيرفر على جهازك الشخصي
 const API_URL = "http://127.0.0.1:5000/api/obd2";
 const CMD_URL = "http://127.0.0.1:5000/api/command";
 
@@ -41,7 +42,7 @@ export default function App() {
 
   // --- 2. نظام التعرف على ماركة السيارة من الـ VIN ---
   const getCarMake = (vin) => {
-    if (!vin) return "جاري التعرف على المركبة...";
+    if (!vin || vin === "") return "جاري التعرف على المركبة...";
     const prefix = vin.substring(0, 3).toUpperCase();
     const map = { 
       "WBA": "BMW 🇩🇪", "WDC": "Mercedes-Benz 🇩🇪", "WAU": "Audi 🇩🇪", 
@@ -80,7 +81,9 @@ export default function App() {
           setFreezeFrame(null);
         }
       }
-    } catch (e) { alert("❌ فشل الاتصال بالسيرفر المحلي (تأكد من تشغيل bridge.py)"); }
+    } catch (e) { 
+        alert("❌ فشل الاتصال بالسيرفر المحلي (تأكد من تشغيل ملف البايثون bridge.py)"); 
+    }
   };
 
   // --- 5. تحديث البيانات والرسومات ---
@@ -91,7 +94,8 @@ export default function App() {
             renderTo: 'rpm-gauge', width: 220, height: 220, units: 'RPM x1000',
             minValue: 0, maxValue: 8, majorTicks: ['0','1','2','3','4','5','6','7','8'],
             highlights: [{ from: 6.5, to: 8, color: 'rgba(200, 0, 0, .8)' }],
-            colorPlate: '#050505', colorNumbers: '#00ffcc', needleType: 'arrow', valueBox: true
+            colorPlate: '#050505', colorNumbers: '#00ffcc', needleType: 'arrow', valueBox: true,
+            animatedValue: true, animationDuration: 500
         }).draw();
     }
     // إعداد عداد الحرارة
@@ -100,13 +104,16 @@ export default function App() {
             renderTo: 'temp-gauge', width: 220, height: 220, units: 'TEMP °C',
             minValue: 0, maxValue: 150, majorTicks: ['0','30','60','90','120','150'],
             highlights: [{ from: 100, to: 150, color: 'rgba(255, 0, 0, .8)' }],
-            colorPlate: '#050505', colorNumbers: '#fff'
+            colorPlate: '#050505', colorNumbers: '#fff',
+            animatedValue: true, animationDuration: 500
         }).draw();
     }
 
     const fetchLiveData = async () => {
       try {
         const response = await fetch(API_URL);
+        if (!response.ok) throw new Error("Server not responding");
+        
         const incoming = await response.json();
         setIsConnected(true);
         setData(prev => ({ ...prev, ...incoming }));
@@ -116,7 +123,7 @@ export default function App() {
         if (tempG.current) tempG.current.value = incoming.temp || 0;
         
         // نظام الـ Freeze Frame عند ظهور عطل
-        if (incoming.dtc_code && !freezeFrame) {
+        if (incoming.dtc_code && incoming.dtc_code !== "" && !freezeFrame) {
             setFreezeFrame({
                 code: incoming.dtc_code, speed: incoming.speed,
                 temp: incoming.temp, rpm: incoming.rpm,
@@ -129,11 +136,15 @@ export default function App() {
 
         // فحص قاعدة البيانات بحثاً عن العطل المكتشف
         const code = incoming.dtc_code?.toLowerCase().trim();
-        if (code && geminiDatabase[code]) {
+        if (code && code !== "" && geminiDatabase[code]) {
           setActiveError({ code: incoming.dtc_code.toUpperCase(), desc: geminiDatabase[code] });
-        } else { setActiveError(null); }
+        } else if (code === "" || !code) { 
+          setActiveError(null); 
+        }
         
-      } catch (e) { setIsConnected(false); }
+      } catch (e) { 
+          setIsConnected(false); 
+      }
     };
 
     const interval = setInterval(fetchLiveData, 1000);
@@ -147,7 +158,9 @@ export default function App() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
         <div>
           <h1 style={{ color: '#00ffcc', margin: 0, fontSize: '1.4rem' }}>TITAN PRO MAX V5.7</h1>
-          <small style={{color: isConnected ? '#00ff00' : '#ff1e1e'}}>{isConnected ? "● ONLINE" : "○ OFFLINE"}</small>
+          <small style={{color: isConnected ? '#00ff00' : '#ff1e1e', fontWeight: 'bold'}}>
+              {isConnected ? "● ONLINE (جهازك متصل)" : "○ OFFLINE (تأكد من تشغيل bridge.py)"}
+          </small>
         </div>
       </div>
 
@@ -163,7 +176,7 @@ export default function App() {
       {/* توزيع الواجهة الرئيسي */}
       <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr 300px', gap: '15px' }}>
         
-        {/* العمود الأيسر: العدادات الدائرية */}
+        {/* العمود الأيمن (في الـ RTL هو الأيسر): العدادات الدائرية */}
         <div style={{ background: '#080808', padding: '15px', borderRadius: '25px', textAlign: 'center', border: '1px solid #111' }}>
           <canvas id="rpm-gauge"></canvas>
           <hr style={{borderColor: '#111', margin: '15px 0'}} />
@@ -196,7 +209,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* العمود الأيمن: أدوات الفحص والتحليل الذكي */}
+        {/* العمود الأيسر (في الـ RTL هو الأيمن): أدوات الفحص والتحليل الذكي */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           
           {/* قسم الأزرار */}
@@ -210,7 +223,7 @@ export default function App() {
           <div style={{ background: '#080808', padding: '15px', borderRadius: '20px', border: '1px solid #333', flex: 1 }}>
             <h4 style={{ color: '#00ffcc', margin: '0 0 10px 0' }}>✨ تحليل تيتان الذكي</h4>
             <div style={{ padding: '10px', background: '#111', borderRadius: '10px', fontSize: '0.8rem', color: '#00ffcc', marginBottom: '10px' }}>
-               {performanceStatus}
+                {performanceStatus}
             </div>
             
             {/* عرض العطل النشط إذا وجد */}
@@ -222,7 +235,7 @@ export default function App() {
             )}
 
             {/* عرض لقطة البيانات (Freeze Frame) */}
-            {freezeFrame && !activeError && (
+            {freezeFrame && (
               <div style={{ marginTop: '10px', padding: '8px', borderTop: '1px solid #222', fontSize: '0.7rem', color: '#666' }}>
                 آخر لقطة بيانات للعطل: {freezeFrame.code} في الساعة {freezeFrame.time}
               </div>

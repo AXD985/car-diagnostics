@@ -1,33 +1,28 @@
 import obd
-import time
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
 app = Flask(__name__)
-# تفعيل CORS للسماح بالاتصال من الواجهة
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+
+# تفعيل CORS بشكل كامل لضمان عمل الأزرار من موقع Render
+CORS(app, resources={r"/api/*": {
+    "origins": "*",
+    "methods": ["GET", "POST", "OPTIONS"],
+    "allow_headers": ["Content-Type"]
+}})
 
 def connect_obd():
-    print("🔍 جاري محاولة فحص الاتصال بالقطعة...")
-    # استخدام try لمنع البرنامج من الانهيار في حال غياب القطعة
-    try:
-        # محاولة سريعة للبحث عن المنفذ
-        connection = obd.OBD(portstr="COM1", baudrate=38400, timeout=1)
-        if connection.is_connected():
-            print("✅ تم الاتصال بالقطعة!")
-            return connection
-    except Exception as e:
-        print(f"⚠️ تنبيه: لم يتم العثور على قطعة ({e})")
-    
-    print("🚀 تفعيل وضع المحاكاة (Demo Mode) بنجاح.")
+    print("🔍 جاري فحص الاتصال...")
+    # بما أن القطعة غير موجودة، سنقوم بإرجاع None فوراً 
+    # لتجنب رسالة 'Failed to read port' وتوقف السيرفر
     return None
 
-# تشغيل محاولة الاتصال (ستفشل وتكمل بأمان)
+# محاولة الاتصال (ستنتقل لوضع الديمو مباشرة)
 connection = connect_obd()
 
 @app.route('/api/obd2', methods=['GET'])
 def get_obd_data():
-    # طالما القطعة غير موجودة، سنرسل هذه البيانات للواجهة لتراها تعمل
+    # بيانات ديمو لتشغيل عدادات TITAN PRO
     return jsonify({
         "rpm": 2800, 
         "speed": 120, 
@@ -35,24 +30,28 @@ def get_obd_data():
         "load": 45,
         "voltage": 14.1, 
         "throttle": 30, 
-        "vin": "WBA-TITAN-PRO-2026",
+        "vin": "DEMO-MODE-2026",
         "dtc_code": "P0300" 
     })
 
 @app.route('/api/command', methods=['POST', 'OPTIONS'])
 def handle_command():
+    # حل مشكلة الأزرار (CORS Preflight)
     if request.method == 'OPTIONS':
         return jsonify({"status": "ok"}), 200
         
-    cmd = request.json.get("command")
-    print(f"📡 استلمت أمر من الواجهة: {cmd}")
+    data = request.json
+    cmd = data.get("command")
+    print(f"📡 أمر مستلم من الواجهة: {cmd}")
     
-    # هنا ستظهر لك رسالة Alert في المتصفح تخبرك أن الزر استجاب
+    # الرد برسالة نجاح لتظهر في المتصفح (Alert)
     return jsonify({
         "status": "success", 
-        "message": f"تم استلام أمر {cmd} في وضع المحاكاة بنجاح"
+        "message": f"تم استقبال أمر {cmd} بنجاح في وضع المحاكاة"
     })
 
 if __name__ == '__main__':
-    # تشغيل السيرفر على منفذ 5000
-    app.run(host='127.0.0.1', port=5000)
+    print("🚀 السيرفر يعمل الآن على http://127.0.0.1:5000")
+    print("💡 افتح موقع Render الآن وقم بعمل Refresh")
+    # تشغيل السيرفر
+    app.run(host='127.0.0.1', port=5000, debug=False)
