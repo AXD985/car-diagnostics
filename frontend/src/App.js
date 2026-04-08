@@ -21,7 +21,7 @@ const getStatusColor = (val, type) => {
 };
 
 const getCarMake = (vin) => {
-  if (!vin || vin === "") return "جاري التعرف على المركبة...";
+  if (!vin || vin === "") return "جاري فحص بروتوكول ECU... 🤖";
   
   const prefix = vin.substring(0, 3).toUpperCase();
   const map = {
@@ -33,9 +33,19 @@ const getCarMake = (vin) => {
     "1FA": "Ford 🇺🇸",
     "1GC": "Chevrolet 🇺🇸",
     "KMH": "Hyundai 🇰🇷",
-    "KNA": "Kia 🇰🇷"
+    "KNA": "Kia 🇰🇷",
+    "JN1": "Nissan 🇯🇵",
+    "JDA": "Daihatsu 🇯🇵",
+    "JM1": "Mazda 🇯🇵",
+    "SAL": "Land Rover 🇬🇧",
+    "SBM": "McLaren 🇬🇧",
+    "WP0": "Porsche 🇩🇪",
+    "WVW": "Volkswagen 🇩🇪",
+    "ZFF": "Ferrari 🇮🇹"
   };
-  return map[prefix] || "مركبة ذكية متصلة 🚗";
+
+  // إذا وجد الكود في القائمة يعرضه، وإلا يعرض رقم الشاصي مع أيقونة عامة
+  return map[prefix] || `مركبة متصلة (${prefix}) 🏎️`;
 };
 
 // =================== DATA ===================
@@ -93,8 +103,8 @@ export default function App() {
         alert(resData.message);
         
         if (mode === "04") {
-          setActiveError(null);
-          setFreezeFrame(null);
+         setActiveError(null);
+         setFreezeFrame(null);
         }
       }
     } catch (e) {
@@ -208,7 +218,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* Info Bar */}
+      {/* Info Bar - ✅ تم التحديث هنا */}
       <div style={{ 
         background: '#080808', padding: '15px', 
         borderRadius: '15px', border: '1px solid #222',
@@ -217,19 +227,21 @@ export default function App() {
       }}>
         <div>
           <h2 style={{ 
-            margin: 0, color: '#00ffcc', 
-            fontSize: '1.1rem' 
+            margin: 0, 
+            color: '#00ffcc', 
+            fontSize: '1.4rem',
+            textShadow: '0 0 10px #00ffcc55'  // ✅ تم إضافة التوهج
           }}>
             {getCarMake(data.vin)}
           </h2>
-          <code style={{ color: '#444' }}>
-            VIN: {data.vin || "---"}
+          <code style={{ color: '#666', fontSize: '0.9rem' }}>  {/* ✅ تم التحديث */}
+            ID: {data.vin || "SEARCHING..."}
           </code>
         </div>
         <div style={{ fontSize: '2rem' }}>🏎️</div>
       </div>
 
-      {/* Main Grid */}
+      {/* باقي الكود بدون تغيير */}
       <div style={{ 
         display: 'grid', 
         gridTemplateColumns: '280px 1fr 300px', 
