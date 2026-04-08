@@ -6,7 +6,6 @@ const API_URL = "http://127.0.0.1:5000/api/obd2";
 const CMD_URL = "http://127.0.0.1:5000/api/command";
 
 export default function App() {
-  // --- 1. الحالات (States) ---
   const [data, setData] = useState({ 
     rpm: 0, temp: 0, speed: 0, voltage: 12.6, load: 0, 
     vin: "", dtc_code: "", throttle: 0, intake: 0, timing: 0 
@@ -15,17 +14,16 @@ export default function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [activeError, setActiveError] = useState(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
-  
-  // حالات الـ AI Chat
+
+  // --- حالات نظام الدردشة المضافة ---
   const [userQuery, setUserQuery] = useState("");
-  const [aiResponse, setAiResponse] = useState("أهلاً بك في نظام Titan AI. كيف يمكنني مساعدتك في فحص مركبتك اليوم؟");
+  const [aiResponse, setAiResponse] = useState("أهلاً بك في Titan AI. يمكنك سؤالي عن حالة المحرك أو طلب نصيحة ميكانيكية.");
   const [isThinking, setIsThinking] = useState(false);
 
   const rpmG = useRef(null);
   const tempG = useRef(null);
   const timeoutIdRef = useRef(null);
 
-  // --- 2. محرك التشخيص (AI Engine) ---
   const aiEngine = useMemo(() => ({
     database: {
       "p0011": { title: "توقيت عمود الكامات (Camshaft)", advice: "افحص مستوى الزيت فوراً، قد يكون الحساس متسخاً." },
@@ -42,7 +40,6 @@ export default function App() {
     }
   }), []);
 
-  // --- 3. جلب البيانات والتحكم في العدادات ---
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 1024);
     window.addEventListener('resize', handleResize);
@@ -64,6 +61,7 @@ export default function App() {
     }
 
     let isMounted = true;
+
     const fetchLiveData = async () => {
       try {
         const response = await fetch(API_URL);
@@ -100,24 +98,29 @@ export default function App() {
     };
 
     fetchLiveData();
+
     return () => { 
       isMounted = false; 
       clearTimeout(timeoutIdRef.current); 
       window.removeEventListener('resize', handleResize);
+      rpmG.current?.destroy?.();
+      tempG.current?.destroy?.();
     };
   }, [aiEngine]);
 
-  // --- 4. معالجة سؤال الـ AI ---
+  const currentStatus = aiEngine.analyzeStatus(data);
+
+  // --- دالة إرسال السؤال ومعالجته ---
   const handleAskAI = () => {
     if (!userQuery.trim()) return;
     setIsThinking(true);
-    setAiResponse("جاري تحليل البيانات الفنية...");
+    setAiResponse("جاري تحليل بيانات الحساسات الحالية...");
 
     setTimeout(() => {
-      let response = "تحليل تيتان: ";
-      if (data.temp > 95) response += "درجة الحرارة تميل للارتفاع، يرجى فحص المراوح. ";
-      else if (activeError) response += `رصدت عطل ${activeError.code}. ${activeError.advice}`;
-      else response += "حالة المحرك ممتازة بناءً على القراءات الحالية.";
+      let response = "بناءً على الفحص اللحظي: ";
+      if (data.temp > 98) response += "المحرك يميل للسخونة، تأكد من دورة التبريد. ";
+      else if (activeError) response += `يوجد كود عطل (${activeError.code}). ${activeError.advice}`;
+      else response += "أداء المحرك مثالي حالياً ولا يوجد مؤشرات لأعطال ميكانيكية.";
       
       setAiResponse(response);
       setIsThinking(false);
@@ -132,14 +135,15 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify({ command: "04" }) 
       });
+      const result = await res.json();
       if (res.ok) {
         setActiveError(null);
-        alert("تم إرسال أمر مسح الأعطال ✅");
+        alert(result.message || "تم مسح كود العطل بنجاح ✅");
       }
-    } catch { alert("فشل الاتصال بالسيرفر ❌"); }
+    } catch {
+      alert("فشل الاتصال بالسيرفر ❌");
+    }
   };
-
-  const currentStatus = aiEngine.analyzeStatus(data);
 
   return (
     <div style={{ backgroundColor: '#000', color: '#fff', minHeight: '100vh', padding: '15px', direction: 'rtl', fontFamily: 'Segoe UI, sans-serif' }}>
@@ -154,7 +158,7 @@ export default function App() {
         <span style={{ fontSize: '1.5rem' }}>🤖</span>
         <div style={{ flex: 1, fontWeight: 'bold', color: currentStatus.color }}>{currentStatus.msg}</div>
         <div style={{ fontSize: '0.8rem', color: isConnected ? '#00ff00' : '#ff1e1e' }}>
-          {isConnected ? `متصل | VIN: ${data.vin}` : "جاري البحث عن ECU..."}
+          {isConnected ? `مركبة ذكية متصلة | VIN: ${data.vin}` : "جاري البحث عن ECU..."}
         </div>
       </div>
 
@@ -170,7 +174,7 @@ export default function App() {
         {/* الرسم البياني والمربعات */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           <div style={{ height: '350px', background: '#050505', borderRadius: '30px', padding: '20px', border: '1px solid #1a1a1a' }}>
-            <h4 style={{ margin: '0 0 15px 0', color: '#00ffcc', fontSize: '0.9rem' }}>تحليل الأداء اللحظي</h4>
+            <h4 style={{ margin: '0 0 15px 0', color: '#00ffcc', fontSize: '0.9rem' }}>تحليل الأداء اللحظي (AI Visualization)</h4>
             <ResponsiveContainer width="100%" height="90%">
               <AreaChart data={history}>
                 <defs>
@@ -198,41 +202,60 @@ export default function App() {
           </div>
         </div>
 
-        {/* تشخيص AI + شريط الأسئلة */}
+        {/* تشخيص AI + شريط الأسئلة المدمج */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           <div style={{ background: '#0a0a0a', padding: '20px', borderRadius: '30px', border: '1px solid #333', flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <h3 style={{ color: '#00ffcc', marginTop: 0, fontSize: '1.1rem' }}>💬 مساعد تيتان الذكي</h3>
+            <h3 style={{ color: '#00ffcc', marginTop: 0 }}>📋 تشخيص تيتان AI</h3>
             
-            <div style={{ flex: 1, background: '#000', borderRadius: '15px', padding: '12px', border: '1px solid #1a1a1a', fontSize: '0.85rem', marginBottom: '15px', color: isThinking ? '#555' : '#eee', lineHeight: '1.4' }}>
+            {/* نافذة عرض الرد الذكي */}
+            <div style={{ 
+              flex: 1, 
+              background: '#050505', 
+              borderRadius: '15px', 
+              padding: '12px', 
+              border: '1px solid #1a1a1a', 
+              fontSize: '0.85rem', 
+              marginBottom: '15px',
+              color: isThinking ? '#666' : '#fff',
+              lineHeight: '1.5'
+            }}>
               {aiResponse}
-              {activeError && <div style={{color: '#ff1e1e', marginTop: '10px', fontWeight: 'bold'}}>{activeError.code}: {activeError.title}</div>}
+              {activeError && (
+                <div style={{ marginTop: '10px', color: '#ff1e1e', fontWeight: 'bold', borderTop: '1px solid #222', paddingTop: '10px' }}>
+                  {activeError.code}: {activeError.title}
+                </div>
+              )}
             </div>
 
+            {/* شريط الإدخال */}
             <div style={{ display: 'flex', gap: '5px' }}>
               <input 
                 type="text" 
                 value={userQuery}
                 onChange={(e) => setUserQuery(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleAskAI()}
-                placeholder="اسأل الـ AI..."
-                style={{ flex: 1, background: '#111', border: '1px solid #333', borderRadius: '10px', padding: '10px', color: '#fff', fontSize: '0.8rem' }}
+                placeholder="اسأل الـ AI عن سيارتك..."
+                style={{ flex: 1, background: '#111', border: '1px solid #333', borderRadius: '10px', padding: '10px', color: '#fff', fontSize: '0.8rem', outline: 'none' }}
               />
-              <button onClick={handleAskAI} style={{ background: '#00ffcc', color: '#000', border: 'none', borderRadius: '10px', padding: '0 15px', cursor: 'pointer', fontWeight: 'bold' }}>
-                {isThinking ? '...' : 'إرسال'}
+              <button 
+                onClick={handleAskAI}
+                style={{ background: '#00ffcc', color: '#000', border: 'none', borderRadius: '10px', padding: '0 15px', cursor: 'pointer', fontWeight: 'bold' }}
+              >
+                إرسال
               </button>
             </div>
 
             {activeError && (
-              <button onClick={handleClearCode} style={{ width: '100%', marginTop: '10px', padding: '10px', background: '#ff1e1e', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold' }}>
+              <button onClick={handleClearCode} style={{ width: '100%', marginTop: '10px', padding: '10px', background: '#ff1e1e', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer' }}>
                 مسح كود العطل
               </button>
             )}
           </div>
           
           <div style={{ background: '#1a1000', padding: '15px', borderRadius: '25px', border: '1px solid #ffae0033' }}>
-            <h5 style={{ margin: '0 0 5px 0', color: '#ffae00' }}>⚠️ حالة النظام</h5>
+            <h5 style={{ margin: '0 0 5px 0', color: '#ffae00' }}>⚠️ مراقبة الحساسات</h5>
             <div style={{ fontSize: '0.75rem', color: '#ccc' }}>
-               {data.temp > 100 ? "الحرارة مرتفعة جداً!" : "جميع الحساسات تعمل بكفاءة"}
+               {data.temp > 100 ? "الحرارة مرتفعة - يرجى القيادة بهدوء" : "جميع الحساسات تعمل بكفاءة عالية"}
             </div>
           </div>
         </div>
