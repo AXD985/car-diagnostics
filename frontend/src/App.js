@@ -3,8 +3,8 @@ import { RadialGauge } from 'canvas-gauges';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 /**
- * نظام TITAN PRO MAX V5.5 - النسخة النهائية المتكاملة
- * تم تحسين التوزيع (Layout) لضمان ظهور لوحة التحكم ولقطة العطل
+ * نظام TITAN PRO MAX V5.5 - النسخة النهائية المستقرة
+ * تم دمج كافة الأدوات: العدادات، الرسم البياني، لقطة العطل، ولوحة التحكم
  */
 
 const API_URL = "https://car-diagnostics-b600.onrender.com/api/obd2";
@@ -64,14 +64,14 @@ export default function App() {
 
   useEffect(() => {
     rpmG.current = new RadialGauge({
-      renderTo: 'rpm-gauge', width: 220, height: 220, units: 'RPM x1000',
+      renderTo: 'rpm-gauge', width: 200, height: 200, units: 'RPM x1000',
       minValue: 0, maxValue: 8, majorTicks: ['0','1','2','3','4','5','6','7','8'],
       highlights: [{ from: 6.5, to: 8, color: 'rgba(200, 0, 0, .8)' }],
       colorPlate: '#050505', colorNumbers: '#00ffcc', needleType: 'arrow', valueBox: true, animationDuration: 500
     }).draw();
 
     tempG.current = new RadialGauge({
-      renderTo: 'temp-gauge', width: 220, height: 220, units: 'TEMP °C',
+      renderTo: 'temp-gauge', width: 200, height: 200, units: 'TEMP °C',
       minValue: 0, maxValue: 150, majorTicks: ['0','30','60','90','120','150'],
       colorPlate: '#050505', colorNumbers: '#fff', animationDuration: 800
     }).draw();
@@ -133,39 +133,38 @@ export default function App() {
       
       {/* 1. Header & Search */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', gap: '10px' }}>
-        <h1 style={{ color: '#00ffcc', margin: 0, fontSize: '1.5rem' }}>TITAN PRO MAX V5.5</h1>
+        <h1 style={{ color: '#00ffcc', margin: 0, fontSize: '1.4rem' }}>TITAN PRO MAX V5.5</h1>
         <input 
           type="text" 
-          placeholder="🔍 ابحث عن عطل..." 
-          style={{ flex: 1, maxWidth: '400px', padding: '10px', borderRadius: '10px', backgroundColor: '#111', color: '#fff', border: '1px solid #333' }}
+          placeholder="🔍 ابحث عن عطل أو قطعة..." 
+          style={{ flex: 1, maxWidth: '350px', padding: '10px', borderRadius: '10px', backgroundColor: '#111', color: '#fff', border: '1px solid #333' }}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
       </div>
 
       {/* 2. VIN & Identity Card */}
-      <div style={{ background: 'linear-gradient(90deg, #080808 0%, #121212 100%)', padding: '15px', borderRadius: '15px', border: '1px solid #222', marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ background: 'linear-gradient(90deg, #080808 0%, #151515 100%)', padding: '12px 20px', borderRadius: '15px', border: '1px solid #222', marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h2 style={{ margin: 0, color: '#00ffcc', fontSize: '1.2rem' }}>{getCarMake(data.vin)}</h2>
-          <small style={{ color: '#666' }}>VIN: {data.vin || "WBS123456789"}</small>
+          <h2 style={{ margin: 0, color: '#00ffcc', fontSize: '1.1rem' }}>{getCarMake(data.vin)}</h2>
+          <code style={{ color: '#555', fontSize: '0.8rem' }}>VIN: {data.vin || "---"}</code>
         </div>
-        <div style={{ fontSize: '2rem' }}>{data.vin?.startsWith("W") ? "🇩🇪" : "🚗"}</div>
+        <div style={{ fontSize: '1.8rem' }}>{data.vin?.startsWith("W") ? "🇩🇪" : "🚗"}</div>
       </div>
 
       {/* 3. Main Grid Layout (3 Columns) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '15px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr 300px', gap: '15px' }}>
         
-        {/* Column A: Gauges */}
+        {/* العمود الأول: العدادات */}
         <div style={{ background: '#080808', padding: '15px', borderRadius: '20px', textAlign: 'center', border: '1px solid #111' }}>
-          <div style={{display: 'inline-block'}}><canvas id="rpm-gauge"></canvas></div>
-          <h4 style={{margin: '5px 0', color: '#00ffcc'}}>دوران المحرك</h4>
-          <div style={{display: 'inline-block', marginTop: '10px'}}><canvas id="temp-gauge"></canvas></div>
-          <h4 style={{margin: '5px 0', color: '#fff'}}>الحرارة</h4>
+          <div style={{marginBottom: '10px'}}><canvas id="rpm-gauge"></canvas></div>
+          <small style={{color: '#00ffcc', display: 'block', marginBottom: '15px'}}>دوران المحرك</small>
+          <canvas id="temp-gauge"></canvas>
+          <small style={{color: '#fff', display: 'block'}}>درجة الحرارة</small>
         </div>
 
-        {/* Column B: Analytics & Sensors */}
+        {/* العمود الثاني: التحليل البياني والحساسات */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          {/* Chart */}
-          <div style={{ height: '220px', background: '#080808', padding: '15px', borderRadius: '20px', border: '1px solid #111' }}>
+          <div style={{ height: '230px', background: '#080808', padding: '15px', borderRadius: '20px', border: '1px solid #111' }}>
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={history}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#111" />
@@ -173,50 +172,50 @@ export default function App() {
               </AreaChart>
             </ResponsiveContainer>
           </div>
-          {/* Sensor Grid */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
             {allSensors.map((s, i) => (
-              <div key={i} style={{ background: '#080808', padding: '12px', borderRadius: '12px', textAlign: 'center', border: '1px solid #111' }}>
-                <small style={{ color: '#555', display: 'block' }}>{s.label}</small>
-                <strong style={{ fontSize: '1.1rem', color: s.color }}>{s.val} <small style={{fontSize: '0.7rem'}}>{s.unit}</small></strong>
+              <div key={i} style={{ background: '#080808', padding: '12px', borderRadius: '15px', textAlign: 'center', border: '1px solid #111' }}>
+                <small style={{ color: '#444', display: 'block' }}>{s.label}</small>
+                <strong style={{ fontSize: '1.1rem', color: s.color }}>{s.val} <small style={{fontSize: '0.6rem'}}>{s.unit}</small></strong>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Column C: Control & Diagnosis (The Tools you were missing) */}
+        {/* العمود الثالث: التشخيص، لقطة العطل، والتحكم */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           
-          {/* Control Panel */}
-          <div style={{ background: '#0a0a0a', padding: '20px', borderRadius: '20px', border: '2px solid #ff1e1e' }}>
-            <h3 style={{ color: '#ff1e1e', marginTop: 0, fontSize: '1rem' }}>🛠️ التحكم والبرمجة</h3>
+          {/* لوحة التحكم والمسح (الجديدة) */}
+          <div style={{ background: '#0a0a0a', padding: '15px', borderRadius: '20px', border: '2px solid #ff1e1e' }}>
+            <h4 style={{ color: '#ff1e1e', marginTop: 0, marginBottom: '10px', fontSize: '0.9rem' }}>🛠️ لوحة التحكم</h4>
             <button 
               onClick={handleClearCodes}
-              style={{ width: '100%', padding: '12px', backgroundColor: '#ff1e1e', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold' }}>
-              🗑️ مسح جميع الأعطال
+              style={{ width: '100%', padding: '12px', backgroundColor: '#ff1e1e', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem' }}>
+              🗑️ مسح أكواد الأعطال
             </button>
           </div>
 
-          {/* Freeze Frame */}
+          {/* لقطة العطل (Freeze Frame) */}
           {freezeFrame && (
-            <div style={{ background: '#00ffcc05', padding: '15px', borderRadius: '15px', border: '1px solid #00ffcc44' }}>
-              <strong style={{ color: '#00ffcc', fontSize: '0.9rem' }}>📸 لقطة العطل (Freeze Frame):</strong>
-              <div style={{ fontSize: '0.8rem', marginTop: '8px', color: '#ccc' }}>
-                • السرعة: {freezeFrame.speed} | RPM: {freezeFrame.rpm}<br/>
+            <div style={{ background: '#00ffcc08', padding: '12px', borderRadius: '15px', border: '1px solid #00ffcc44' }}>
+              <strong style={{ color: '#00ffcc', fontSize: '0.85rem' }}>📸 لقطة العطل النشطة:</strong>
+              <div style={{ fontSize: '0.75rem', marginTop: '5px', color: '#ccc', lineHeight: '1.5' }}>
+                • السرعة: {freezeFrame.speed} كم/س<br/>
+                • المحرك: {freezeFrame.rpm} RPM<br/>
                 • الحرارة: {freezeFrame.temp}°C | الوقت: {freezeFrame.time}
               </div>
             </div>
           )}
 
-          {/* Assistant & Active Errors */}
+          {/* مساعد تيتان الذكي (يظهر فيه الخطأ P0300) */}
           <div style={{ background: '#080808', padding: '15px', borderRadius: '20px', border: '1px solid #333' }}>
-            <h4 style={{ color: '#00ffcc', margin: '0 0 10px 0' }}>✨ مساعد تيتان</h4>
-            <p style={{ fontSize: '0.85rem', color: '#aaa', backgroundColor: '#000', padding: '10px', borderRadius: '10px' }}>{aiResponse}</p>
+            <h4 style={{ color: '#00ffcc', margin: '0 0 10px 0', fontSize: '0.9rem' }}>✨ مساعد تيتان</h4>
+            <p style={{ fontSize: '0.8rem', color: '#aaa', backgroundColor: '#000', padding: '8px', borderRadius: '8px' }}>{aiResponse}</p>
             
             {activeError && (
               <div style={{ marginTop: '10px', padding: '10px', background: '#ff1e1e15', borderRadius: '10px', border: '1px solid #ff1e1e33' }}>
-                <strong style={{color: '#ff4d4d', fontSize: '0.9rem'}}>⚠️ كود: {activeError.code}</strong>
-                <p style={{fontSize: '0.8rem', margin: '5px 0', color: '#eee'}}>{activeError.desc}</p>
+                <strong style={{color: '#ff4d4d', fontSize: '0.85rem'}}>⚠️ تنبيه: {activeError.code}</strong>
+                <p style={{fontSize: '0.75rem', margin: '5px 0', color: '#eee'}}>{activeError.desc}</p>
               </div>
             )}
           </div>
