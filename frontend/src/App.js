@@ -1,182 +1,215 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { RadialGauge } from 'canvas-gauges';
-import { AreaChart, Area, CartesianGrid, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
-// الروابط الخاصة بالسيرفر المحلي
 const API_URL = "http://127.0.0.1:5000/api/obd2";
 const CMD_URL = "http://127.0.0.1:5000/api/command";
 
 export default function App() {
-  // الحالة الشاملة لجميع الحساسات
   const [data, setData] = useState({ 
     rpm: 0, temp: 0, speed: 0, voltage: 12.6, load: 0, 
     vin: "", dtc_code: "", throttle: 0, intake: 0, timing: 0 
   });
   const [history, setHistory] = useState([]);
-  const [activeError, setActiveError] = useState(null);
-  const [freezeFrame, setFreezeFrame] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [activeError, setActiveError] = useState(null);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
 
   const rpmG = useRef(null);
   const tempG = useRef(null);
+  const timeoutIdRef = useRef(null);
 
-  // قاعدة بيانات الأعطال والتحليلات
-  const geminiDatabase = useMemo(() => ({
-    "p0011": "خلل في توقيت عمود الكامات (Camshaft). افحص مستوى ونظافة الزيت وحساس الـ VVT.",
-    "p0300": "احتراق غير منتظم عشوائي (Misfire). افحص البواجي والكويلات فوراً.",
-    "p0101": "مشكلة في مستشعر تدفق الهواء (MAF). تسبب تفتفة وضعف تسارع.",
-    "p0171": "خليط هواء ووقود فقير. افحص تهريب الفاكيوم أو البخاخات.",
-    "p0420": "كفاءة دبة التلوث منخفضة (Catalyst System). قد تحتاج لتنظيف أو تغيير.",
-    "p0505": "خلل في نظام التحكم بالهواء الخامل (IAC). يسبب عدم استقرار الـ RPM عند الوقوف.",
-    "p0113": "حساس حرارة هواء السحب (IAT) يعطي قراءة مرتفعة جداً.",
-    "p0500": "خلل في مستشعر سرعة السيارة (VSS).",
-    "حرارة": "تحذير: ارتفاع الحرارة خطر! افحص مستوى سائل التبريد والمراوح.",
-    "بطارية": "إذا كان الجهد أقل من 12.0V والمحرك مطفأ، البطارية ضعيفة.",
-    "كتمة": "تحقق من صفاية البنزين، بخاخات الوقود، أو انسداد في منظومة العادم."
+  const aiEngine = useMemo(() => ({
+    database: {
+      "p0011": { title: "توقيت عمود الكامات (Camshaft)", advice: "افحص مستوى الزيت فوراً، قد يكون الحساس متسخاً." },
+      "p0300": { title: "احتراق عشوائي (Misfire)", advice: "تجنب السرعات العالية. افحص البواجي والكويلات." },
+      "p0101": { title: "حساس تدفق الهواء (MAF)", advice: "نظف حساس الهواء بمنتج مخصص وتأكد من إغلاق فلتر الهواء." },
+      "p0171": { title: "خليط وقود فقير (Lean)", advice: "يوجد هواء زائد يدخل المحرك. افحص ليات الفاكيوم." },
+      "p0420": { title: "كفاءة دبة التلوث (Catalyst)", advice: "الدبة لا تعمل بكفاءة. قد تحتاج لتنظيف أو استبدال حساس الأكسجين." }
+    },
+    analyzeStatus: (d) => {
+      if (d.temp > 105) return { msg: "خطر: ارتفاع حرارة المحرك!", color: "#ff1e1e" };
+      if (d.voltage < 11.5) return { msg: "تنبيه: جهد البطارية منخفض جداً", color: "#ffae00" };
+      if (d.rpm > 7000) return { msg: "تحذير: دوران المحرك مرتفع جداً", color: "#ff1e1e" };
+      return { msg: "جميع الأنظمة الحيوية مستقرة", color: "#00ffcc" };
+    }
   }), []);
 
-  const getCarMake = (vin) => {
-    if (!vin) return "جاري التعرف على المركبة...";
-    const prefix = vin.substring(0, 3).toUpperCase();
-    const map = { 
-      "WBA": "BMW 🇩🇪", "WDC": "Mercedes-Benz 🇩🇪", "WAU": "Audi 🇩🇪", 
-      "JT1": "Toyota 🇯🇵", "JHM": "Honda 🇯🇵", "1FA": "Ford 🇺🇸", 
-      "1GC": "Chevrolet 🇺🇸", "KMH": "Hyundai 🇰🇷", "KNA": "Kia 🇰🇷"
-    };
-    return map[prefix] || "مركبة ذكية متصلة 🚗";
-  };
-
-  const performanceStatus = useMemo(() => {
-    if (!isConnected) return "بانتظار البيانات لبدء التحليل...";
-    const { rpm, throttle, load, voltage, temp } = data;
-    if (throttle > 60 && rpm < 2500 && load > 80) return "⚠️ ملاحظة: حمل مرتفع مع RPM منخفض. قد يكون هناك كتمة.";
-    if (voltage < 13.0 && rpm > 1000) return "🔋 تنبيه: الجهد منخفض أثناء التشغيل. افحص الدينامو.";
-    if (temp > 105) return "🌡️ تحذير: الحرارة مرتفعة جداً! خفف السرعة فوراً.";
-    return "✅ جميع الأنظمة تعمل بتناغم مثالي حالياً.";
-  }, [data, isConnected]);
-
-  const sendOBDCommand = async (mode) => {
-    try {
-      const response = await fetch(CMD_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: mode })
-      });
-      const resData = await response.json();
-      if (response.ok) {
-        alert(resData.message);
-        if (mode === "04") { setActiveError(null); setFreezeFrame(null); }
-      }
-    } catch (e) { alert("❌ فشل الاتصال بالسيرفر المحلي"); }
-  };
-
+  // ضبط Responsive + العدادات
   useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 1024);
+    window.addEventListener('resize', handleResize);
+
     if (!rpmG.current) {
       rpmG.current = new RadialGauge({
         renderTo: 'rpm-gauge', width: 220, height: 220, units: 'RPM x1000',
-        minValue: 0, maxValue: 8, majorTicks: ['0','1','2','3','4','5','6','7','8'],
-        highlights: [{ from: 6.5, to: 8, color: 'rgba(200, 0, 0, .8)' }],
-        colorPlate: '#050505', colorNumbers: '#00ffcc', needleType: 'arrow',
-        valueBox: true, animatedValue: true
+        minValue: 0, maxValue: 8, colorPlate: '#050505', colorNumbers: '#00ffcc', 
+        needleType: 'arrow', animatedValue: true, borders: false,
+        highlights: [{ from: 6.5, to: 8, color: 'rgba(255,0,0,.75)' }]
       }).draw();
     }
     if (!tempG.current) {
       tempG.current = new RadialGauge({
         renderTo: 'temp-gauge', width: 220, height: 220, units: 'TEMP °C',
-        minValue: 0, maxValue: 150, majorTicks: ['0','30','60','90','120','150'],
-        highlights: [{ from: 100, to: 150, color: 'rgba(255, 0, 0, .8)' }],
-        colorPlate: '#050505', colorNumbers: '#fff', animatedValue: true
+        minValue: 0, maxValue: 150, colorPlate: '#050505', colorNumbers: '#fff',
+        highlights: [{ from: 100, to: 150, color: 'rgba(255,0,0,.75)' }]
       }).draw();
     }
+
+    let isMounted = true;
 
     const fetchLiveData = async () => {
       try {
         const response = await fetch(API_URL);
         const incoming = await response.json();
+        
+        if (!isMounted) return;
         setIsConnected(true);
         setData(prev => ({ ...prev, ...incoming }));
+
+        setHistory(prev => {
+          const newPoint = { 
+            time: new Date().toLocaleTimeString().split(' ')[0], 
+            rpm: incoming.rpm || 0, 
+            temp: incoming.temp || 0 
+          };
+          return [...prev.slice(-19), newPoint];
+        });
+
+        const code = incoming.dtc_code?.toLowerCase().trim();
+        if (code && aiEngine.database[code]) {
+          setActiveError({ code: code.toUpperCase(), ...aiEngine.database[code] });
+        } else {
+          setActiveError(null);
+        }
+
         if (rpmG.current) rpmG.current.value = (incoming.rpm || 0) / 1000;
         if (tempG.current) tempG.current.value = incoming.temp || 0;
-        setHistory(prev => [...prev, { rpm: incoming.rpm || 0 }].slice(-30));
-        const code = incoming.dtc_code?.toLowerCase().trim();
-        if (code && geminiDatabase[code]) {
-          setActiveError({ code: incoming.dtc_code.toUpperCase(), desc: geminiDatabase[code] });
-        }
-      } catch (e) { setIsConnected(false); }
+
+      } catch (e) {
+        if (isMounted) setIsConnected(false);
+      } finally {
+        timeoutIdRef.current = setTimeout(fetchLiveData, 1000);
+      }
     };
 
-    const interval = setInterval(fetchLiveData, 1000);
-    return () => clearInterval(interval);
-  }, [geminiDatabase]);
+    fetchLiveData();
+
+    return () => { 
+      isMounted = false; 
+      clearTimeout(timeoutIdRef.current); 
+      window.removeEventListener('resize', handleResize);
+      rpmG.current?.destroy?.();
+      tempG.current?.destroy?.();
+    };
+  }, [aiEngine]);
+
+  const currentStatus = aiEngine.analyzeStatus(data);
+
+  const handleClearCode = async () => {
+    try {
+      const res = await fetch(CMD_URL, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ command: "04" }) 
+      });
+      const result = await res.json();
+      if (res.ok) {
+        setActiveError(null);
+        alert(result.message || "تم مسح كود العطل بنجاح ✅");
+      }
+    } catch {
+      alert("فشل الاتصال بالسيرفر ❌");
+    }
+  };
 
   return (
-    <div style={{ backgroundColor: '#000', color: '#fff', minHeight: '100vh', padding: '15px', direction: 'rtl', fontFamily: 'Arial' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
-        <div>
-          <h1 style={{ color: '#00ffcc', margin: 0, fontSize: '1.4rem' }}>TITAN PRO MAX V5.7</h1>
-          <small style={{color: isConnected ? '#00ff00' : '#ff1e1e'}}>{isConnected ? "● ONLINE" : "○ OFFLINE"}</small>
+    <div style={{ backgroundColor: '#000', color: '#fff', minHeight: '100vh', padding: '15px', direction: 'rtl', fontFamily: 'Segoe UI, sans-serif' }}>
+      
+      {/* 🤖 AI Status Bar */}
+      <div style={{ 
+        background: `${currentStatus.color}15`, 
+        border: `1px solid ${currentStatus.color}`, 
+        padding: '12px 25px', borderRadius: '50px', 
+        marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '15px'
+      }}>
+        <span style={{ fontSize: '1.5rem' }}>🤖</span>
+        <div style={{ flex: 1, fontWeight: 'bold', color: currentStatus.color }}>{currentStatus.msg}</div>
+        <div style={{ fontSize: '0.8rem', color: isConnected ? '#00ff00' : '#ff1e1e' }}>
+          {isConnected ? `مركبة ذكية متصلة | VIN: ${data.vin}` : "جاري البحث عن ECU..."}
         </div>
       </div>
 
-      <div style={{ background: '#080808', padding: '15px', borderRadius: '15px', border: '1px solid #222', marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h2 style={{ margin: 0, color: '#00ffcc', fontSize: '1.1rem' }}>{getCarMake(data.vin)}</h2>
-          <code style={{ color: '#444' }}>VIN: {data.vin || "---"}</code>
-        </div>
-        <div style={{ fontSize: '2rem' }}>🚗</div>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr 300px', gap: '15px' }}>
-        <div style={{ background: '#080808', padding: '15px', borderRadius: '25px', textAlign: 'center', border: '1px solid #111' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '280px 1fr 320px', gap: '15px' }}>
+        
+        {/* العدادات */}
+        <div style={{ background: '#0a0a0a', padding: '20px', borderRadius: '30px', border: '1px solid #1a1a1a', textAlign: 'center' }}>
           <canvas id="rpm-gauge"></canvas>
-          <hr style={{borderColor: '#111', margin: '15px 0'}} />
+          <div style={{ margin: '20px 0', borderBottom: '1px solid #1a1a1a' }}></div>
           <canvas id="temp-gauge"></canvas>
         </div>
 
+        {/* الرسم البياني والمربعات */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          <div style={{ height: '220px', background: '#080808', padding: '10px', borderRadius: '25px', border: '1px solid #111' }}>
-            <ResponsiveContainer width="100%" height="100%">
+          <div style={{ height: '350px', background: '#050505', borderRadius: '30px', padding: '20px', border: '1px solid #1a1a1a' }}>
+            <h4 style={{ margin: '0 0 15px 0', color: '#00ffcc', fontSize: '0.9rem' }}>تحليل الأداء اللحظي (AI Visualization)</h4>
+            <ResponsiveContainer width="100%" height="90%">
               <AreaChart data={history}>
+                <defs>
+                  <linearGradient id="colorRpm" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#00ffcc" stopOpacity={0.8}/>
+                    <stop offset="95%" stopColor="#00ffcc" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#111" vertical={false} />
-                <Area type="monotone" dataKey="rpm" stroke="#00ffcc" fill="#00ffcc15" isAnimationActive={false} />
+                <XAxis dataKey="time" hide />
+                <YAxis hide domain={[0, 'auto']} />
+                <Tooltip contentStyle={{backgroundColor: '#000', border: '1px solid #333', color: '#fff'}} />
+                <Area type="monotone" dataKey="rpm" stroke="#00ffcc" fillOpacity={1} fill="url(#colorRpm)" isAnimationActive={false} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
-          
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
-            {[
-              { label: 'السرعة', val: data.speed, unit: 'km/h' },
-              { label: 'الجهد', val: data.voltage, unit: 'V' },
-              { label: 'الحمل', val: data.load, unit: '%' },
-              { label: 'البوابة', val: data.throttle, unit: '%' },
-              { label: 'هواء السحب', val: data.intake, unit: '°C' },
-              { label: 'توقيت الإشعال', val: data.timing, unit: '°' }
-            ].map((s, i) => (
-              <div key={i} style={{ background: '#080808', padding: '15px', borderRadius: '15px', border: '1px solid #111', textAlign: 'center' }}>
-                <small style={{ color: '#444', display: 'block', fontSize: '0.7rem' }}>{s.label}</small>
-                <strong style={{ fontSize: '1.1rem', color: '#00ffcc' }}>{s.val} {s.unit}</strong>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+            {[{ label: 'البطارية', val: data.voltage, unit: 'V' }, { label: 'الحمل', val: data.load, unit: '%' }, { label: 'البوابة', val: data.throttle, unit: '%' }].map((item, idx) => (
+              <div key={idx} style={{ background: '#0a0a0a', padding: '15px', borderRadius: '20px', border: '1px solid #1a1a1a', textAlign: 'center' }}>
+                <small style={{ color: '#666' }}>{item.label}</small>
+                <div style={{ fontSize: '1.4rem', color: '#00ffcc', fontWeight: 'bold' }}>{item.val}{item.unit}</div>
               </div>
             ))}
           </div>
         </div>
 
+        {/* تشخيص AI */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          <div style={{ background: '#0a0a0a', padding: '15px', borderRadius: '20px', border: '2px solid #ff1e1e' }}>
-            <h4 style={{ color: '#ff1e1e', marginTop: 0 }}>🛠️ أدوات الفحص</h4>
-            <button onClick={() => sendOBDCommand("03")} style={{ width: '100%', padding: '10px', backgroundColor: '#333', color: '#fff', borderRadius: '8px', marginBottom: '8px', cursor: 'pointer', border: 'none' }}>🔍 فحص</button>
-            <button onClick={() => sendOBDCommand("04")} style={{ width: '100%', padding: '10px', backgroundColor: '#ff1e1e', color: '#fff', borderRadius: '8px', cursor: 'pointer', border: 'none' }}>🗑️ مسح</button>
-          </div>
-          <div style={{ background: '#080808', padding: '15px', borderRadius: '20px', border: '1px solid #333', flex: 1 }}>
-            <h4 style={{ color: '#00ffcc', margin: '0 0 10px 0' }}>✨ تحليل تيتان</h4>
-            <div style={{ padding: '10px', background: '#111', borderRadius: '10px', fontSize: '0.8rem', color: '#00ffcc', marginBottom: '10px' }}>{performanceStatus}</div>
-            {activeError && (
-              <div style={{ padding: '10px', background: '#ff1e1e15', borderRadius: '10px', border: '1px solid #ff1e1e33' }}>
-                <strong style={{color: '#ff4d4d'}}>⚠️ {activeError.code}</strong>
-                <p style={{fontSize: '0.75rem', margin: '5px 0 0 0'}}>{activeError.desc}</p>
+          <div style={{ background: '#0a0a0a', padding: '20px', borderRadius: '30px', border: '1px solid #333', flex: 1 }}>
+            <h3 style={{ color: '#00ffcc', marginTop: 0 }}>📋 تشخيص تيتان AI</h3>
+            
+            {activeError ? (
+              <div style={{ background: '#ff1e1e10', padding: '15px', borderRadius: '20px', border: '1px solid #ff1e1e33' }}>
+                <div style={{ color: '#ff1e1e', fontWeight: 'bold' }}>{activeError.code}</div>
+                <div style={{ color: '#fff', margin: '5px 0' }}>{activeError.title}</div>
+                <p style={{ fontSize: '0.85rem', color: '#aaa' }}>💡 نصيحة المساعد: {activeError.advice}</p>
+                <button onClick={handleClearCode} style={{ width: '100%', marginTop: '10px', padding: '10px', background: '#ff1e1e', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer' }}>
+                  مسح كود العطل
+                </button>
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                <div style={{ fontSize: '3rem' }}>✅</div>
+                <p style={{ color: '#00ff00' }}>المحرك يعمل بتناغم مثالي</p>
               </div>
             )}
           </div>
+          
+          <div style={{ background: '#1a1000', padding: '15px', borderRadius: '25px', border: '1px solid #ffae0033' }}>
+            <h5 style={{ margin: '0 0 5px 0', color: '#ffae00' }}>⚠️ مراقبة الحساسات</h5>
+            <div style={{ fontSize: '0.75rem', color: '#ccc' }}>
+               {data.temp > 100 ? "الحرارة مرتفعة - يرجى القيادة بهدوء" : "جميع الحساسات تعمل بكفاءة عالية"}
+            </div>
+          </div>
         </div>
+
       </div>
     </div>
   );
