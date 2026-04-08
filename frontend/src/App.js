@@ -6,6 +6,7 @@ const API_URL = "http://127.0.0.1:5000/api/obd2";
 const CMD_URL = "http://127.0.0.1:5000/api/command";
 
 export default function App() {
+  // --- 1. الحالات (States) ---
   const [data, setData] = useState({ 
     rpm: 0, temp: 0, speed: 0, voltage: 12.6, load: 0, 
     vin: "", dtc_code: "", throttle: 0, intake: 0, timing: 0 
@@ -14,11 +15,17 @@ export default function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [activeError, setActiveError] = useState(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
+  
+  // حالات الـ AI Chat
+  const [userQuery, setUserQuery] = useState("");
+  const [aiResponse, setAiResponse] = useState("أهلاً بك في نظام Titan AI. كيف يمكنني مساعدتك في فحص مركبتك اليوم؟");
+  const [isThinking, setIsThinking] = useState(false);
 
   const rpmG = useRef(null);
   const tempG = useRef(null);
   const timeoutIdRef = useRef(null);
 
+  // --- 2. محرك التشخيص (AI Engine) ---
   const aiEngine = useMemo(() => ({
     database: {
       "p0011": { title: "توقيت عمود الكامات (Camshaft)", advice: "افحص مستوى الزيت فوراً، قد يكون الحساس متسخاً." },
@@ -35,7 +42,7 @@ export default function App() {
     }
   }), []);
 
-  // ضبط Responsive + العدادات
+  // --- 3. جلب البيانات والتحكم في العدادات ---
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 1024);
     window.addEventListener('resize', handleResize);
@@ -57,7 +64,6 @@ export default function App() {
     }
 
     let isMounted = true;
-
     const fetchLiveData = async () => {
       try {
         const response = await fetch(API_URL);
@@ -94,17 +100,30 @@ export default function App() {
     };
 
     fetchLiveData();
-
     return () => { 
       isMounted = false; 
       clearTimeout(timeoutIdRef.current); 
       window.removeEventListener('resize', handleResize);
-      rpmG.current?.destroy?.();
-      tempG.current?.destroy?.();
     };
   }, [aiEngine]);
 
-  const currentStatus = aiEngine.analyzeStatus(data);
+  // --- 4. معالجة سؤال الـ AI ---
+  const handleAskAI = () => {
+    if (!userQuery.trim()) return;
+    setIsThinking(true);
+    setAiResponse("جاري تحليل البيانات الفنية...");
+
+    setTimeout(() => {
+      let response = "تحليل تيتان: ";
+      if (data.temp > 95) response += "درجة الحرارة تميل للارتفاع، يرجى فحص المراوح. ";
+      else if (activeError) response += `رصدت عطل ${activeError.code}. ${activeError.advice}`;
+      else response += "حالة المحرك ممتازة بناءً على القراءات الحالية.";
+      
+      setAiResponse(response);
+      setIsThinking(false);
+      setUserQuery("");
+    }, 1200);
+  };
 
   const handleClearCode = async () => {
     try {
@@ -113,15 +132,14 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify({ command: "04" }) 
       });
-      const result = await res.json();
       if (res.ok) {
         setActiveError(null);
-        alert(result.message || "تم مسح كود العطل بنجاح ✅");
+        alert("تم إرسال أمر مسح الأعطال ✅");
       }
-    } catch {
-      alert("فشل الاتصال بالسيرفر ❌");
-    }
+    } catch { alert("فشل الاتصال بالسيرفر ❌"); }
   };
+
+  const currentStatus = aiEngine.analyzeStatus(data);
 
   return (
     <div style={{ backgroundColor: '#000', color: '#fff', minHeight: '100vh', padding: '15px', direction: 'rtl', fontFamily: 'Segoe UI, sans-serif' }}>
@@ -136,7 +154,7 @@ export default function App() {
         <span style={{ fontSize: '1.5rem' }}>🤖</span>
         <div style={{ flex: 1, fontWeight: 'bold', color: currentStatus.color }}>{currentStatus.msg}</div>
         <div style={{ fontSize: '0.8rem', color: isConnected ? '#00ff00' : '#ff1e1e' }}>
-          {isConnected ? `مركبة ذكية متصلة | VIN: ${data.vin}` : "جاري البحث عن ECU..."}
+          {isConnected ? `متصل | VIN: ${data.vin}` : "جاري البحث عن ECU..."}
         </div>
       </div>
 
@@ -152,7 +170,7 @@ export default function App() {
         {/* الرسم البياني والمربعات */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           <div style={{ height: '350px', background: '#050505', borderRadius: '30px', padding: '20px', border: '1px solid #1a1a1a' }}>
-            <h4 style={{ margin: '0 0 15px 0', color: '#00ffcc', fontSize: '0.9rem' }}>تحليل الأداء اللحظي (AI Visualization)</h4>
+            <h4 style={{ margin: '0 0 15px 0', color: '#00ffcc', fontSize: '0.9rem' }}>تحليل الأداء اللحظي</h4>
             <ResponsiveContainer width="100%" height="90%">
               <AreaChart data={history}>
                 <defs>
@@ -180,32 +198,41 @@ export default function App() {
           </div>
         </div>
 
-        {/* تشخيص AI */}
+        {/* تشخيص AI + شريط الأسئلة */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          <div style={{ background: '#0a0a0a', padding: '20px', borderRadius: '30px', border: '1px solid #333', flex: 1 }}>
-            <h3 style={{ color: '#00ffcc', marginTop: 0 }}>📋 تشخيص تيتان AI</h3>
+          <div style={{ background: '#0a0a0a', padding: '20px', borderRadius: '30px', border: '1px solid #333', flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <h3 style={{ color: '#00ffcc', marginTop: 0, fontSize: '1.1rem' }}>💬 مساعد تيتان الذكي</h3>
             
-            {activeError ? (
-              <div style={{ background: '#ff1e1e10', padding: '15px', borderRadius: '20px', border: '1px solid #ff1e1e33' }}>
-                <div style={{ color: '#ff1e1e', fontWeight: 'bold' }}>{activeError.code}</div>
-                <div style={{ color: '#fff', margin: '5px 0' }}>{activeError.title}</div>
-                <p style={{ fontSize: '0.85rem', color: '#aaa' }}>💡 نصيحة المساعد: {activeError.advice}</p>
-                <button onClick={handleClearCode} style={{ width: '100%', marginTop: '10px', padding: '10px', background: '#ff1e1e', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer' }}>
-                  مسح كود العطل
-                </button>
-              </div>
-            ) : (
-              <div style={{ textAlign: 'center', padding: '40px 0' }}>
-                <div style={{ fontSize: '3rem' }}>✅</div>
-                <p style={{ color: '#00ff00' }}>المحرك يعمل بتناغم مثالي</p>
-              </div>
+            <div style={{ flex: 1, background: '#000', borderRadius: '15px', padding: '12px', border: '1px solid #1a1a1a', fontSize: '0.85rem', marginBottom: '15px', color: isThinking ? '#555' : '#eee', lineHeight: '1.4' }}>
+              {aiResponse}
+              {activeError && <div style={{color: '#ff1e1e', marginTop: '10px', fontWeight: 'bold'}}>{activeError.code}: {activeError.title}</div>}
+            </div>
+
+            <div style={{ display: 'flex', gap: '5px' }}>
+              <input 
+                type="text" 
+                value={userQuery}
+                onChange={(e) => setUserQuery(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleAskAI()}
+                placeholder="اسأل الـ AI..."
+                style={{ flex: 1, background: '#111', border: '1px solid #333', borderRadius: '10px', padding: '10px', color: '#fff', fontSize: '0.8rem' }}
+              />
+              <button onClick={handleAskAI} style={{ background: '#00ffcc', color: '#000', border: 'none', borderRadius: '10px', padding: '0 15px', cursor: 'pointer', fontWeight: 'bold' }}>
+                {isThinking ? '...' : 'إرسال'}
+              </button>
+            </div>
+
+            {activeError && (
+              <button onClick={handleClearCode} style={{ width: '100%', marginTop: '10px', padding: '10px', background: '#ff1e1e', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold' }}>
+                مسح كود العطل
+              </button>
             )}
           </div>
           
           <div style={{ background: '#1a1000', padding: '15px', borderRadius: '25px', border: '1px solid #ffae0033' }}>
-            <h5 style={{ margin: '0 0 5px 0', color: '#ffae00' }}>⚠️ مراقبة الحساسات</h5>
+            <h5 style={{ margin: '0 0 5px 0', color: '#ffae00' }}>⚠️ حالة النظام</h5>
             <div style={{ fontSize: '0.75rem', color: '#ccc' }}>
-               {data.temp > 100 ? "الحرارة مرتفعة - يرجى القيادة بهدوء" : "جميع الحساسات تعمل بكفاءة عالية"}
+               {data.temp > 100 ? "الحرارة مرتفعة جداً!" : "جميع الحساسات تعمل بكفاءة"}
             </div>
           </div>
         </div>
