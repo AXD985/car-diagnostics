@@ -3,8 +3,7 @@ import { RadialGauge } from 'canvas-gauges';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 /**
- * نظام TITAN PRO MAX V5.5 - النسخة النهائية المستقرة
- * تم دمج كافة الأدوات: العدادات، الرسم البياني، لقطة العطل، ولوحة التحكم
+ * نظام TITAN PRO MAX V5.5 - النسخة الشاملة والمستقرة
  */
 
 const API_URL = "https://car-diagnostics-b600.onrender.com/api/obd2";
@@ -19,6 +18,7 @@ export default function App() {
   const [activeError, setActiveError] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [freezeFrame, setFreezeFrame] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
 
   const rpmG = useRef(null);
   const tempG = useRef(null);
@@ -80,32 +80,28 @@ export default function App() {
       try {
         const response = await fetch(API_URL);
         const incoming = await response.json();
-        const standardizedData = {
-          ...incoming,
-          rpm: incoming.rpm || 0, temp: incoming.temp || 0,
-          vin: incoming.vin || "", dtc_code: incoming.dtc_code || ""
-        };
+        setIsConnected(true);
 
-        setData(standardizedData);
-        if (rpmG.current) rpmG.current.value = standardizedData.rpm / 1000;
-        if (tempG.current) tempG.current.value = standardizedData.temp;
+        setData(prev => ({ ...prev, ...incoming }));
+        
+        if (rpmG.current) rpmG.current.value = (incoming.rpm || 0) / 1000;
+        if (tempG.current) tempG.current.value = incoming.temp || 0;
 
-        if (standardizedData.dtc_code && !freezeFrame) {
-            setFreezeFrame({ ...standardizedData, time: new Date().toLocaleTimeString() });
+        if (incoming.dtc_code && !freezeFrame) {
+            setFreezeFrame({ ...incoming, time: new Date().toLocaleTimeString() });
         }
 
         setHistory(prev => [...prev, { 
-          rpm: standardizedData.rpm, 
-          load: standardizedData.load || 0, 
+          rpm: incoming.rpm || 0, 
           time: new Date().toLocaleTimeString().slice(-5) 
         }].slice(-30));
         
-        const errorCode = standardizedData.dtc_code?.toLowerCase().trim();
+        const errorCode = incoming.dtc_code?.toLowerCase().trim();
         if (errorCode && geminiDatabase[errorCode]) {
-          setActiveError({ code: standardizedData.dtc_code.toUpperCase(), desc: geminiDatabase[errorCode] });
+          setActiveError({ code: incoming.dtc_code.toUpperCase(), desc: geminiDatabase[errorCode] });
         } else { setActiveError(null); }
 
-      } catch (error) { console.log("اتصال مفقود..."); }
+      } catch (error) { setIsConnected(false); }
     };
 
     const interval = setInterval(fetchLiveData, 1000); 
@@ -133,7 +129,10 @@ export default function App() {
       
       {/* 1. Header & Search */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', gap: '10px' }}>
-        <h1 style={{ color: '#00ffcc', margin: 0, fontSize: '1.4rem' }}>TITAN PRO MAX V5.5</h1>
+        <div>
+          <h1 style={{ color: '#00ffcc', margin: 0, fontSize: '1.4rem' }}>TITAN PRO MAX V5.5</h1>
+          <small style={{color: isConnected ? '#00ff00' : '#ff1e1e'}}>{isConnected ? "● النظام متصل" : "○ جاري الاتصال..."}</small>
+        </div>
         <input 
           type="text" 
           placeholder="🔍 ابحث عن عطل أو قطعة..." 
@@ -151,7 +150,7 @@ export default function App() {
         <div style={{ fontSize: '1.8rem' }}>{data.vin?.startsWith("W") ? "🇩🇪" : "🚗"}</div>
       </div>
 
-      {/* 3. Main Grid Layout (3 Columns) */}
+      {/* 3. Main Grid Layout */}
       <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr 300px', gap: '15px' }}>
         
         {/* العمود الأول: العدادات */}
@@ -182,44 +181,36 @@ export default function App() {
           </div>
         </div>
 
-        {/* العمود الثالث: التشخيص، لقطة العطل، والتحكم */}
+        {/* العمود الثالث: التشخيص والتحكم */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          
-          {/* لوحة التحكم والمسح (الجديدة) */}
           <div style={{ background: '#0a0a0a', padding: '15px', borderRadius: '20px', border: '2px solid #ff1e1e' }}>
             <h4 style={{ color: '#ff1e1e', marginTop: 0, marginBottom: '10px', fontSize: '0.9rem' }}>🛠️ لوحة التحكم</h4>
             <button 
               onClick={handleClearCodes}
-              style={{ width: '100%', padding: '12px', backgroundColor: '#ff1e1e', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem' }}>
+              style={{ width: '100%', padding: '12px', backgroundColor: '#ff1e1e', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold' }}>
               🗑️ مسح أكواد الأعطال
             </button>
           </div>
 
-          {/* لقطة العطل (Freeze Frame) */}
           {freezeFrame && (
             <div style={{ background: '#00ffcc08', padding: '12px', borderRadius: '15px', border: '1px solid #00ffcc44' }}>
-              <strong style={{ color: '#00ffcc', fontSize: '0.85rem' }}>📸 لقطة العطل النشطة:</strong>
-              <div style={{ fontSize: '0.75rem', marginTop: '5px', color: '#ccc', lineHeight: '1.5' }}>
-                • السرعة: {freezeFrame.speed} كم/س<br/>
-                • المحرك: {freezeFrame.rpm} RPM<br/>
-                • الحرارة: {freezeFrame.temp}°C | الوقت: {freezeFrame.time}
+              <strong style={{ color: '#00ffcc', fontSize: '0.85rem' }}>📸 لقطة العطل:</strong>
+              <div style={{ fontSize: '0.75rem', marginTop: '5px', color: '#ccc' }}>
+                • السرعة: {freezeFrame.speed} كم/س | • الحرارة: {freezeFrame.temp}°C
               </div>
             </div>
           )}
 
-          {/* مساعد تيتان الذكي (يظهر فيه الخطأ P0300) */}
           <div style={{ background: '#080808', padding: '15px', borderRadius: '20px', border: '1px solid #333' }}>
             <h4 style={{ color: '#00ffcc', margin: '0 0 10px 0', fontSize: '0.9rem' }}>✨ مساعد تيتان</h4>
-            <p style={{ fontSize: '0.8rem', color: '#aaa', backgroundColor: '#000', padding: '8px', borderRadius: '8px' }}>{aiResponse}</p>
-            
+            <p style={{ fontSize: '0.8rem', color: '#aaa' }}>{aiResponse}</p>
             {activeError && (
               <div style={{ marginTop: '10px', padding: '10px', background: '#ff1e1e15', borderRadius: '10px', border: '1px solid #ff1e1e33' }}>
                 <strong style={{color: '#ff4d4d', fontSize: '0.85rem'}}>⚠️ تنبيه: {activeError.code}</strong>
-                <p style={{fontSize: '0.75rem', margin: '5px 0', color: '#eee'}}>{activeError.desc}</p>
+                <p style={{fontSize: '0.75rem', color: '#eee'}}>{activeError.desc}</p>
               </div>
             )}
           </div>
-
         </div>
       </div>
     </div>
