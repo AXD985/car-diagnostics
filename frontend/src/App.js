@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { RadialGauge } from 'canvas-gauges';
 import { AreaChart, Area, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
+// العناوين البرمجية للخادم (Backend)
 const API_URL = "http://127.0.0.1:5000/api/obd2";
 const CMD_URL = "http://127.0.0.1:5000/api/command";
 
@@ -15,15 +16,10 @@ export default function App() {
   const [activeError, setActiveError] = useState(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
 
-  // --- حالات نظام الدردشة المضافة ---
-  const [userQuery, setUserQuery] = useState("");
-  const [aiResponse, setAiResponse] = useState("أهلاً بك في Titan AI. يمكنك سؤالي عن حالة المحرك أو طلب نصيحة ميكانيكية.");
-  const [isThinking, setIsThinking] = useState(false);
-
   const rpmG = useRef(null);
   const tempG = useRef(null);
-  const timeoutIdRef = useRef(null);
 
+  // 1. نظام الذكاء الاصطناعي للتشخيص (AI Diagnostic Engine)
   const aiEngine = useMemo(() => ({
     database: {
       "p0011": { title: "توقيت عمود الكامات (Camshaft)", advice: "افحص مستوى الزيت فوراً، قد يكون الحساس متسخاً." },
@@ -44,6 +40,7 @@ export default function App() {
     const handleResize = () => setIsMobile(window.innerWidth < 1024);
     window.addEventListener('resize', handleResize);
 
+    // تهيئة العدادات (Gauges)
     if (!rpmG.current) {
       rpmG.current = new RadialGauge({
         renderTo: 'rpm-gauge', width: 220, height: 220, units: 'RPM x1000',
@@ -61,89 +58,55 @@ export default function App() {
     }
 
     let isMounted = true;
+    let timeoutId;
 
     const fetchLiveData = async () => {
       try {
         const response = await fetch(API_URL);
         const incoming = await response.json();
         
-        if (!isMounted) return;
-        setIsConnected(true);
-        setData(prev => ({ ...prev, ...incoming }));
+        if (isMounted && incoming) {
+          setIsConnected(true);
+          setData(prev => ({ ...prev, ...incoming }));
 
-        setHistory(prev => {
-          const newPoint = { 
-            time: new Date().toLocaleTimeString().split(' ')[0], 
-            rpm: incoming.rpm || 0, 
-            temp: incoming.temp || 0 
-          };
-          return [...prev.slice(-19), newPoint];
-        });
+          // تحديث الرسم البياني - إضافة نقطة بيانات جديدة
+          setHistory(prev => {
+            const newPoint = { 
+              time: new Date().toLocaleTimeString().split(' ')[0], 
+              rpm: incoming.rpm || 0, 
+              temp: incoming.temp || 0 
+            };
+            const updatedHistory = [...prev, newPoint];
+            return updatedHistory.slice(-20); // الاحتفاظ بآخر 20 نقطة فقط
+          });
 
-        const code = incoming.dtc_code?.toLowerCase().trim();
-        if (code && aiEngine.database[code]) {
-          setActiveError({ code: code.toUpperCase(), ...aiEngine.database[code] });
-        } else {
-          setActiveError(null);
+          // تشخيص الأعطال عبر الـ AI
+          const code = incoming.dtc_code?.toLowerCase().trim();
+          if (code && aiEngine.database[code]) {
+            setActiveError({ code: code.toUpperCase(), ...aiEngine.database[code] });
+          } else {
+            setActiveError(null);
+          }
+
+          if (rpmG.current) rpmG.current.value = (incoming.rpm || 0) / 1000;
+          if (tempG.current) tempG.current.value = incoming.temp || 0;
         }
-
-        if (rpmG.current) rpmG.current.value = (incoming.rpm || 0) / 1000;
-        if (tempG.current) tempG.current.value = incoming.temp || 0;
-
-      } catch (e) {
-        if (isMounted) setIsConnected(false);
-      } finally {
-        timeoutIdRef.current = setTimeout(fetchLiveData, 1000);
+      } catch (e) { 
+        if (isMounted) setIsConnected(false); 
+      } finally { 
+        if (isMounted) timeoutId = setTimeout(fetchLiveData, 1000); 
       }
     };
 
     fetchLiveData();
-
     return () => { 
       isMounted = false; 
-      clearTimeout(timeoutIdRef.current); 
+      clearTimeout(timeoutId); 
       window.removeEventListener('resize', handleResize);
-      rpmG.current?.destroy?.();
-      tempG.current?.destroy?.();
     };
   }, [aiEngine]);
 
   const currentStatus = aiEngine.analyzeStatus(data);
-
-  // --- دالة إرسال السؤال ومعالجته ---
-  const handleAskAI = () => {
-    if (!userQuery.trim()) return;
-    setIsThinking(true);
-    setAiResponse("جاري تحليل بيانات الحساسات الحالية...");
-
-    setTimeout(() => {
-      let response = "بناءً على الفحص اللحظي: ";
-      if (data.temp > 98) response += "المحرك يميل للسخونة، تأكد من دورة التبريد. ";
-      else if (activeError) response += `يوجد كود عطل (${activeError.code}). ${activeError.advice}`;
-      else response += "أداء المحرك مثالي حالياً ولا يوجد مؤشرات لأعطال ميكانيكية.";
-      
-      setAiResponse(response);
-      setIsThinking(false);
-      setUserQuery("");
-    }, 1200);
-  };
-
-  const handleClearCode = async () => {
-    try {
-      const res = await fetch(CMD_URL, { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify({ command: "04" }) 
-      });
-      const result = await res.json();
-      if (res.ok) {
-        setActiveError(null);
-        alert(result.message || "تم مسح كود العطل بنجاح ✅");
-      }
-    } catch {
-      alert("فشل الاتصال بالسيرفر ❌");
-    }
-  };
 
   return (
     <div style={{ backgroundColor: '#000', color: '#fff', minHeight: '100vh', padding: '15px', direction: 'rtl', fontFamily: 'Segoe UI, sans-serif' }}>
@@ -164,14 +127,14 @@ export default function App() {
 
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '280px 1fr 320px', gap: '15px' }}>
         
-        {/* العدادات */}
+        {/* الجانب الأيمن: العدادات */}
         <div style={{ background: '#0a0a0a', padding: '20px', borderRadius: '30px', border: '1px solid #1a1a1a', textAlign: 'center' }}>
           <canvas id="rpm-gauge"></canvas>
           <div style={{ margin: '20px 0', borderBottom: '1px solid #1a1a1a' }}></div>
           <canvas id="temp-gauge"></canvas>
         </div>
 
-        {/* الرسم البياني والمربعات */}
+        {/* المنتصف: الرسم البياني والمربعات */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           <div style={{ height: '350px', background: '#050505', borderRadius: '30px', padding: '20px', border: '1px solid #1a1a1a' }}>
             <h4 style={{ margin: '0 0 15px 0', color: '#00ffcc', fontSize: '0.9rem' }}>تحليل الأداء اللحظي (AI Visualization)</h4>
@@ -193,7 +156,11 @@ export default function App() {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
-            {[{ label: 'البطارية', val: data.voltage, unit: 'V' }, { label: 'الحمل', val: data.load, unit: '%' }, { label: 'البوابة', val: data.throttle, unit: '%' }].map((item, idx) => (
+            {[
+              { label: 'البطارية', val: data.voltage, unit: 'V' },
+              { label: 'الحمل', val: data.load, unit: '%' },
+              { label: 'البوابة', val: data.throttle, unit: '%' }
+            ].map((item, idx) => (
               <div key={idx} style={{ background: '#0a0a0a', padding: '15px', borderRadius: '20px', border: '1px solid #1a1a1a', textAlign: 'center' }}>
                 <small style={{ color: '#666' }}>{item.label}</small>
                 <div style={{ fontSize: '1.4rem', color: '#00ffcc', fontWeight: 'bold' }}>{item.val}{item.unit}</div>
@@ -202,53 +169,28 @@ export default function App() {
           </div>
         </div>
 
-        {/* تشخيص AI + شريط الأسئلة المدمج */}
+        {/* الجانب الأيسر: تشخيص AI */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          <div style={{ background: '#0a0a0a', padding: '20px', borderRadius: '30px', border: '1px solid #333', flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ background: '#0a0a0a', padding: '20px', borderRadius: '30px', border: '1px solid #333', flex: 1 }}>
             <h3 style={{ color: '#00ffcc', marginTop: 0 }}>📋 تشخيص تيتان AI</h3>
             
-            {/* نافذة عرض الرد الذكي */}
-            <div style={{ 
-              flex: 1, 
-              background: '#050505', 
-              borderRadius: '15px', 
-              padding: '12px', 
-              border: '1px solid #1a1a1a', 
-              fontSize: '0.85rem', 
-              marginBottom: '15px',
-              color: isThinking ? '#666' : '#fff',
-              lineHeight: '1.5'
-            }}>
-              {aiResponse}
-              {activeError && (
-                <div style={{ marginTop: '10px', color: '#ff1e1e', fontWeight: 'bold', borderTop: '1px solid #222', paddingTop: '10px' }}>
-                  {activeError.code}: {activeError.title}
-                </div>
-              )}
-            </div>
-
-            {/* شريط الإدخال */}
-            <div style={{ display: 'flex', gap: '5px' }}>
-              <input 
-                type="text" 
-                value={userQuery}
-                onChange={(e) => setUserQuery(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleAskAI()}
-                placeholder="اسأل الـ AI عن سيارتك..."
-                style={{ flex: 1, background: '#111', border: '1px solid #333', borderRadius: '10px', padding: '10px', color: '#fff', fontSize: '0.8rem', outline: 'none' }}
-              />
-              <button 
-                onClick={handleAskAI}
-                style={{ background: '#00ffcc', color: '#000', border: 'none', borderRadius: '10px', padding: '0 15px', cursor: 'pointer', fontWeight: 'bold' }}
-              >
-                إرسال
-              </button>
-            </div>
-
-            {activeError && (
-              <button onClick={handleClearCode} style={{ width: '100%', marginTop: '10px', padding: '10px', background: '#ff1e1e', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer' }}>
-                مسح كود العطل
-              </button>
+            {activeError ? (
+              <div style={{ background: '#ff1e1e10', padding: '15px', borderRadius: '20px', border: '1px solid #ff1e1e33' }}>
+                <div style={{ color: '#ff1e1e', fontWeight: 'bold' }}>{activeError.code}</div>
+                <div style={{ color: '#fff', margin: '5px 0' }}>{activeError.title}</div>
+                <p style={{ fontSize: '0.85rem', color: '#aaa' }}>💡 نصيحة المساعد: {activeError.advice}</p>
+                <button 
+                  onClick={() => fetch(CMD_URL, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({command: "04"}) })}
+                  style={{ width: '100%', marginTop: '10px', padding: '10px', background: '#ff1e1e', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer' }}
+                >
+                  مسح كود العطل
+                </button>
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                <div style={{ fontSize: '3rem' }}>✅</div>
+                <p style={{ color: '#00ff00' }}>المحرك يعمل بتناغم مثالي</p>
+              </div>
             )}
           </div>
           
