@@ -1,51 +1,68 @@
-import obd
 import requests
 import time
+import random
 
-# 1. الاتصال بالسيارة
-# ملاحظة: إذا كنت تعرف رقم الـ COM Port اكتبه هنا، مثلاً: portstr="COM3"
-connection = obd.OBD() 
-
-# رابط السيرفر الخاص بك على Render
+# روابط السيرفر الخاصة بك
 URL = "https://car-diagnostics-b600.onrender.com/api/obd2"
+CMD_URL = "https://car-diagnostics-b600.onrender.com/api/command"
 
-print("📡 بدأ استقبال البيانات من الحساسات...")
+print("🏎️  بدء TITAN PRO الميداني (بيانات متغيرة + استقبال أوامر)...")
 
-while True:
-    if connection.is_connected():
-        # قراءة الحساسات الأساسية
-        rpm = connection.query(obd.commands.RPM).value.magnitude
-        speed = connection.query(obd.commands.SPEED).value.magnitude
-        temp = connection.query(obd.commands.COOLANT_TEMP).value.magnitude
-        voltage = connection.query(obd.commands.CONTROL_MODULE_VOLTAGE).value.magnitude
+# قيم البداية
+rpm = 800
+speed = 0
+temp = 85
+current_dtc = ""
+
+try:
+    for i in range(100): # محاكاة طويلة جداً للتجربة
+        # 1. التحقق: هل ضغط أحمد على زر "مسح الأعطال" في الموقع؟
+        try:
+            cmd_check = requests.get(CMD_URL)
+            if cmd_check.status_code == 200:
+                command = cmd_check.json().get("command")
+                if command == "CLEAR_CODES":
+                    print("🧹 تم استلام أمر مسح الأعطال من الموقع.. جاري التنفيذ!")
+                    current_dtc = "" # مسح العطل في المحاكاة
+        except: pass
+
+        # 2. محاكاة حركة الأرقام (تسارع تلقائي)
+        if i < 20: # تسارع
+            rpm += random.randint(200, 400)
+            speed += random.randint(5, 12)
+        elif i < 40: # ثبات
+            rpm = random.randint(3000, 3200)
+            speed = random.randint(110, 120)
+        else: # تباطؤ
+            rpm -= random.randint(300, 500)
+            speed -= random.randint(10, 15)
         
-        # قراءة رقم الشاصي (VIN)
-        vin_query = connection.query(obd.commands.VIN)
-        vin_code = str(vin_query.value) if vin_query.value else "UNKNOWN"
+        # تفعيل عطل تلقائي عند الخطوة 15 لاختبار "لقطة العطل" والمسح
+        if i == 15: current_dtc = "P0300"
+        
+        # التأكد من الحدود
+        rpm = max(800, min(rpm, 7500))
+        speed = max(0, min(speed, 240))
 
-        # قراءة أكواد الأعطال (DTC)
-        dtc_query = connection.query(obd.commands.GET_DTC)
-        # نأخذ أول كود عطل إذا وجد
-        dtc_code = dtc_query.value[0][0] if dtc_query.value else ""
-
-        # تجهيز البيانات للإرسال
-        data_to_send = {
-            "rpm": int(rpm),
-            "speed": int(speed),
-            "temp": int(temp),
-            "voltage": round(float(voltage), 1),
-            "vin": vin_code,
-            "dtc_code": dtc_code,
-            "load": 50 # يمكنك إضافة حساس الـ LOAD أيضاً
+        test_data = {
+            "rpm": rpm,
+            "speed": speed,
+            "temp": temp + (i // 10),
+            "voltage": round(random.uniform(13.9, 14.3), 1),
+            "vin": "WBS123456789", # BMW M-Series
+            "dtc_code": current_dtc,
+            "load": random.randint(20, 80),
+            "throttle": random.randint(15, 90)
         }
 
-        try:
-            requests.post(URL, json=data_to_send)
-            print(f"✅ تم الإرسال: RPM={int(rpm)} | VIN={vin_code}")
-        except:
-            print("❌ فشل الاتصال بالسيرفر")
+        # 3. إرسال البيانات للسيرفر السحابي
+        response = requests.post(URL, json=test_data)
+        
+        if response.status_code == 200:
+            status = f"🔥 DTC ACTIVE: {current_dtc}" if current_dtc else "🟢 System Clear"
+            print(f"📊 {i+1}: RPM={rpm} | Speed={speed} | {status}")
+        
+        time.sleep(1) # تحديث كل ثانية
 
-    else:
-        print("🔄 جاري محاولة الاتصال بالقطعة... تأكد من تشغيل سويتش السيارة")
-    
-    time.sleep(1) # تحديث كل ثانية
+except Exception as e:
+    print(f"❌ خطأ فني: {e}")
