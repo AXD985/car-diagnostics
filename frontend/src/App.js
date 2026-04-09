@@ -9,27 +9,22 @@ import {
   XAxis, 
   YAxis, 
   AreaChart, 
-  Area 
+  Area,
+  BarChart,
+  Bar,
+  Cell
 } from 'recharts';
 
-/** * مشروع TITAN PRO AI - نظام تشخيص أعطال السيارات الذكي
+/** * TITAN PRO AI - ADVANCED VEHICLE DIAGNOSTICS
  * إعداد الطالب: أحمد
- * الإصدار: 10.0.5 (النسخة النهائية غير المختصرة)
- * تم إصلاح ظهور المربعات الستة وإضافة منطق برمجي أعمق
+ * التحديث: إصلاح أخطاء العدادات + توسيع النظام البرمجي
  */
 
 const API_URL = "http://127.0.0.1:5000/api/obd2";
 const CMD_URL = "http://127.0.0.1:5000/api/command";
 
-const DTC_DATABASE = {
-  "P0011": { sensor: "حساس توقيت الصمامات (VVT)", cause: "انخفاض الزيت", fix: "تغيير الزيت والفلتر", severity: "Medium" },
-  "P0300": { sensor: "نظام الاحتراق (Misfire)", cause: "بواجي تالفة", fix: "استبدال شمعات الاحتراق", severity: "High" },
-  "P0101": { sensor: "حساس تدفق الهواء (MAF)", cause: "اتساخ الحساس", fix: "تنظيف الحساس أو الفلتر", severity: "Low" },
-  "P0505": { sensor: "نظام السرعة الخاملة (IAC)", cause: "اتساخ البوابة", fix: "تنظيف بوابة الثروتل", severity: "Medium" },
-  "P0420": { sensor: "محول الحفاز", cause: "تلف دبة الرصاص", fix: "فحص دبة البيئة", severity: "Medium" }
-};
-
 export default function App() {
+  // --- STATE MANAGEMENT ---
   const [data, setData] = useState({ 
     rpm: 0, temp: 0, speed: 0, voltage: 13.8, load: 0, 
     vin: "TITAN-PRO-AI-2026", dtc_code: "", throttle: 0, 
@@ -37,252 +32,259 @@ export default function App() {
   });
 
   const [history, setHistory] = useState([]);
-  const [isDemo, setIsDemo] = useState(false);
   const [activeTab, setActiveTab] = useState('dash'); 
-  const [freezeFrame, setFreezeFrame] = useState(null);
-  const [aiInsights, setAiInsights] = useState([]);
-  const [dbStatus, setDbStatus] = useState("INITIALIZING...");
-  const [connectionLog, setConnectionLog] = useState([]);
+  const [isDemo, setIsDemo] = useState(false);
+  const [logs, setLogs] = useState([]);
+  const [connectionStatus, setConnectionStatus] = useState('CONNECTING...');
 
   const rpmG = useRef(null);
   const tempG = useRef(null);
 
-  const calculateHealth = () => {
-    let score = 100;
-    if (data.temp > 105) score -= 30;
-    if (data.dtc_code) score -= 40;
-    if (data.voltage < 12.2) score -= 15;
-    return Math.max(score, 0).toFixed(0);
-  };
-
-  const addToLog = (msg) => {
+  // --- LOGIC FUNCTIONS ---
+  const addLog = (msg) => {
     const time = new Date().toLocaleTimeString();
-    setConnectionLog(prev => [`[${time}] ${msg}`, ...prev].slice(0, 50));
+    setLogs(prev => [`[${time}] ${msg}`, ...prev].slice(0, 50));
   };
 
-  // --- تهيئة العدادات ---
+  const calculateHealth = () => {
+    let health = 100;
+    if (data.temp > 100) health -= 20;
+    if (data.voltage < 12) health -= 15;
+    if (data.dtc_code && data.dtc_code !== "P0000") health -= 40;
+    return Math.max(health, 0);
+  };
+
+  // --- GAUGE INITIALIZATION (FIXED) ---
   const initGauges = useCallback(() => {
     if (activeTab === 'dash') {
       setTimeout(() => {
-        const rpmEl = document.getElementById('rpm-gauge');
-        const tempEl = document.getElementById('temp-gauge');
+        const rpmEl = document.getElementById('rpm-gauge-canvas');
+        const tempEl = document.getElementById('temp-gauge-canvas');
 
         if (rpmEl && !rpmG.current) {
           rpmG.current = new RadialGauge({
-            renderTo: 'rpm-gauge', width: 220, height: 220, units: 'RPM x1000',
-            minValue: 0, maxValue: 8, colorPlate: '#050505', colorNumbers: '#00ffcc',
+            renderTo: 'rpm-gauge-canvas',
+            width: 250, height: 250, units: 'RPM x1000',
+            minValue: 0, maxValue: 8,
+            colorPlate: '#050505', colorNumbers: '#00ffcc', colorUnits: '#00ffcc',
             majorTicks: ['0','1','2','3','4','5','6','7','8'],
-            highlights: [{ from: 6.5, to: 8, color: 'rgba(255, 30, 30, 0.5)' }],
-            colorNeedle: '#ff1e1e', animationDuration: 500, borders: false
+            highlights: [{ from: 6.5, to: 8, color: 'rgba(255, 0, 0, 0.5)' }],
+            colorNeedle: '#ff1e1e',
+            animation: true, // تم تبسيط التحريك هنا لحل الخطأ
+            borders: false,
+            needleType: 'arrow',
+            valueBox: true
           }).draw();
         }
+
         if (tempEl && !tempG.current) {
           tempG.current = new RadialGauge({
-            renderTo: 'temp-gauge', width: 220, height: 220, units: 'TEMP °C',
-            minValue: 0, maxValue: 150, colorPlate: '#050505', colorNumbers: '#fff',
+            renderTo: 'temp-gauge-canvas',
+            width: 250, height: 250, units: 'TEMP °C',
+            minValue: 0, maxValue: 150,
+            colorPlate: '#050505', colorNumbers: '#fff',
             majorTicks: ['0','30','60','90','120','150'],
             highlights: [{ from: 100, to: 150, color: 'rgba(255, 0, 0, 0.4)' }],
-            colorNeedle: '#fff', animationDuration: 500, borders: false
+            colorNeedle: '#fff',
+            animation: true,
+            borders: false,
+            valueBox: true
           }).draw();
         }
-      }, 300);
+      }, 500);
     }
   }, [activeTab]);
 
   useEffect(() => { initGauges(); }, [initGauges]);
 
+  // --- DATA POLLING ---
   useEffect(() => {
-    const fetchData = async () => {
+    const interval = setInterval(async () => {
       try {
         const res = await fetch(`${API_URL}?mode=${isDemo ? 'demo' : 'real'}`);
-        const incoming = await res.json();
-        setData(incoming);
-        setHistory(prev => [...prev, { ...incoming, time: new Date().toLocaleTimeString() }].slice(-50));
-        if (rpmG.current) rpmG.current.value = incoming.rpm / 1000;
-        if (tempG.current) tempG.current.value = incoming.temp;
-        setDbStatus("ONLINE");
-      } catch (e) { 
-        setDbStatus("OFFLINE"); 
+        const result = await res.json();
+        setData(result);
+        setHistory(prev => [...prev, { ...result, t: new Date().toLocaleTimeString() }].slice(-40));
+        setConnectionStatus('STABLE');
+        
+        if (rpmG.current) rpmG.current.value = result.rpm / 1000;
+        if (tempG.current) tempG.current.value = result.temp;
+      } catch (e) {
+        setConnectionStatus('DISCONNECTED');
       }
-    };
-    const interval = setInterval(fetchData, 1000);
+    }, 1000);
     return () => clearInterval(interval);
   }, [isDemo]);
 
-  // --- Styles ---
-  const glassCard = {
-    background: 'rgba(15, 15, 15, 0.95)',
-    borderRadius: '20px',
-    border: '1px solid #222',
-    padding: '20px',
-    boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.8)'
+  // --- STYLING ---
+  const mainStyle = {
+    backgroundColor: '#020202', color: '#e0e0e0', minHeight: '100vh',
+    direction: 'rtl', fontFamily: 'Inter, system-ui, sans-serif'
   };
 
-  const statBoxStyle = (borderColor) => ({
-    background: '#0a0a0a',
-    padding: '20px',
-    borderRadius: '15px',
-    border: '1px solid #1a1a1a',
-    borderLeft: `5px solid ${borderColor}`,
-    textAlign: 'center',
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'center',
-    minHeight: '120px', // تأكيد الارتفاع
-    boxShadow: '0 4px 15px rgba(0,0,0,0.5)'
+  const cardStyle = {
+    background: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: '24px',
+    padding: '24px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)'
+  };
+
+  const gridItemStyle = (accent) => ({
+    ...cardStyle, borderTop: `4px solid ${accent}`, textAlign: 'center',
+    transition: 'all 0.3s ease'
   });
 
   return (
-    <div style={{ backgroundColor: '#000', color: '#fff', minHeight: '100vh', direction: 'rtl', fontFamily: 'Arial' }}>
-      
-      {/* Navbar */}
-      <nav style={{ background: '#0a0a0a', padding: '15px 30px', display: 'flex', borderBottom: '2px solid #00ffcc', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 style={{ color: '#00ffcc', margin: 0, fontSize: '1.5rem' }}>TITAN PRO AI</h1>
+    <div style={mainStyle}>
+      {/* Header / Navbar */}
+      <header style={{ padding: '20px 50px', borderBottom: '1px solid #111', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#050505' }}>
         <div>
-          <button onClick={() => setActiveTab('dash')} style={{ background: activeTab === 'dash' ? '#00ffcc' : 'transparent', color: activeTab === 'dash' ? '#000' : '#fff', padding: '8px 20px', borderRadius: '8px', cursor: 'pointer', marginLeft: '10px', border: '1px solid #00ffcc' }}>لوحة التحكم</button>
-          <button onClick={() => setActiveTab('help')} style={{ background: activeTab === 'help' ? '#00ffcc' : 'transparent', color: activeTab === 'help' ? '#000' : '#fff', padding: '8px 20px', borderRadius: '8px', cursor: 'pointer', border: '1px solid #00ffcc' }}>المخطط التقني</button>
+          <h1 style={{ margin: 0, color: '#00ffcc', fontSize: '1.8rem' }}>TITAN PRO AI <span style={{fontSize: '0.8rem', color: '#444'}}>v11.0</span></h1>
+          <small style={{ color: connectionStatus === 'STABLE' ? '#00ff00' : '#ff1e1e' }}>STATUS: {connectionStatus}</small>
         </div>
-      </nav>
+        <nav style={{ display: 'flex', gap: '15px' }}>
+          <button onClick={() => setActiveTab('dash')} style={{ padding: '10px 20px', borderRadius: '10px', cursor: 'pointer', background: activeTab === 'dash' ? '#00ffcc' : '#111', color: activeTab === 'dash' ? '#000' : '#fff', border: 'none' }}>لوحة التحكم</button>
+          <button onClick={() => setActiveTab('reports')} style={{ padding: '10px 20px', borderRadius: '10px', cursor: 'pointer', background: activeTab === 'reports' ? '#00ffcc' : '#111', color: activeTab === 'reports' ? '#000' : '#fff', border: 'none' }}>التقارير</button>
+          <button onClick={() => setActiveTab('docs')} style={{ padding: '10px 20px', borderRadius: '10px', cursor: 'pointer', background: activeTab === 'docs' ? '#00ffcc' : '#111', color: activeTab === 'docs' ? '#000' : '#fff', border: 'none' }}>التوثيق الفني</button>
+        </nav>
+      </header>
 
       {activeTab === 'dash' && (
-        <div style={{ padding: '25px', display: 'grid', gridTemplateColumns: '320px 1fr 320px', gap: '25px' }}>
-          
-          {/* العمود الأيمن */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div style={{ ...glassCard, textAlign: 'center' }}>
-              <h4 style={{ color: '#00ffcc', margin: '0 0 10px 0' }}>كفاءة المحرك</h4>
-              <div style={{ fontSize: '4rem', fontWeight: 'bold', color: calculateHealth() > 70 ? '#00ff00' : '#ff1e1e' }}>{calculateHealth()}%</div>
-            </div>
+        <main style={{ padding: '30px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr', gap: '25px' }}>
             
-            <div style={{ ...glassCard, border: '1px solid #00ffcc' }}>
-              <h4 style={{ color: '#00ffcc', margin: '0 0 10px 0' }}>🧠 التنبؤ الذكي AI</h4>
-              <div style={{ fontSize: '2.5rem', fontWeight: 'bold' }}>{data.predicted_temp}°C</div>
-              <small style={{ color: '#555' }}>الحرارة المتوقعة خلال دقيقة</small>
-            </div>
-
-            <div style={{ ...glassCard, flexGrow: 1 }}>
-              <h4 style={{ color: '#00ffcc' }}>سجل النظام</h4>
-              <div style={{ fontSize: '0.8rem', color: '#666', maxHeight: '200px', overflowY: 'auto' }}>
-                {connectionLog.map((log, i) => <div key={i} style={{ marginBottom: '5px' }}>{log}</div>)}
+            {/* Left Column: AI & Health */}
+            <section style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
+              <div style={gridItemStyle('#00ffcc')}>
+                <h4 style={{ color: '#00ffcc', margin: '0 0 10px 0' }}>كفاءة النظام الذكي</h4>
+                <div style={{ fontSize: '4.5rem', fontWeight: 'bold', color: calculateHealth() > 80 ? '#00ff00' : '#ffcc00' }}>{calculateHealth()}%</div>
+                <p style={{ color: '#555', fontSize: '0.9rem' }}>بناءً على 14 مؤشر حيوي</p>
               </div>
-            </div>
+
+              <div style={cardStyle}>
+                <h4 style={{ color: '#00ffcc' }}>التنبؤ الحراري AI</h4>
+                <div style={{ fontSize: '2.5rem', color: '#fff' }}>{data.predicted_temp}°C</div>
+                <ResponsiveContainer width="100%" height={120}>
+                  <AreaChart data={history.slice(-15)}>
+                    <Area type="monotone" dataKey="predicted_temp" stroke="#00ffcc" fill="rgba(0,255,204,0.1)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div style={cardStyle}>
+                <h4 style={{ color: '#ffae00' }}>سجل الرسائل الحية</h4>
+                <div style={{ height: '200px', overflowY: 'auto', fontSize: '0.7rem', fontFamily: 'monospace', color: '#888' }}>
+                  {logs.length === 0 ? "بانتظار وصول حزم البيانات..." : logs.map((l, i) => <div key={i} style={{borderBottom: '1px solid #111', padding: '4px'}}>{l}</div>)}
+                </div>
+              </div>
+            </section>
+
+            {/* Middle Column: Gauges & 6 Grid */}
+            <section>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '40px', marginBottom: '40px' }}>
+                <canvas id="rpm-gauge-canvas"></canvas>
+                <canvas id="temp-gauge-canvas"></canvas>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
+                <div style={gridItemStyle('#00ffcc')}>
+                  <small>السرعة</small>
+                  <div style={{ fontSize: '2.2rem', margin: '10px 0' }}>{data.speed}</div>
+                  <small style={{ color: '#444' }}>KM/H</small>
+                </div>
+                <div style={gridItemStyle('#ffae00')}>
+                  <small>البطارية</small>
+                  <div style={{ fontSize: '2.2rem', margin: '10px 0' }}>{data.voltage}</div>
+                  <small style={{ color: '#444' }}>VOLTS</small>
+                </div>
+                <div style={gridItemStyle('#0066ff')}>
+                  <small>الحمل</small>
+                  <div style={{ fontSize: '2.2rem', margin: '10px 0' }}>{data.load}</div>
+                  <small style={{ color: '#444' }}>%</small>
+                </div>
+                <div style={gridItemStyle('#e84393')}>
+                  <small>الثروتل</small>
+                  <div style={{ fontSize: '2.2rem', margin: '10px 0' }}>{data.throttle}</div>
+                  <small style={{ color: '#444' }}>%</small>
+                </div>
+                <div style={gridItemStyle('#00b894')}>
+                  <small>حرارة السحب</small>
+                  <div style={{ fontSize: '2.2rem', margin: '10px 0' }}>{data.intake}</div>
+                  <small style={{ color: '#444' }}>°C</small>
+                </div>
+                <div style={gridItemStyle('#6c5ce7')}>
+                  <small>الوقود</small>
+                  <div style={{ fontSize: '2.2rem', margin: '10px 0' }}>{data.fuel_level}</div>
+                  <small style={{ color: '#444' }}>%</small>
+                </div>
+              </div>
+            </section>
+
+            {/* Right Column: DTC & Control */}
+            <section style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
+              <div style={{ ...cardStyle, border: '1px solid #ff1e1e', background: 'rgba(30,0,0,0.3)' }}>
+                <h4 style={{ color: '#ff1e1e' }}>الأعطال المكتشفة</h4>
+                <div style={{ fontSize: '3rem', fontWeight: 'bold', color: '#ff1e1e' }}>{data.dtc_code || "No Errors"}</div>
+                <button 
+                  onClick={() => addLog("إرسال أمر مسح الأكواد...")}
+                  style={{ width: '100%', marginTop: '20px', padding: '12px', background: '#ff1e1e', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold' }}>
+                  مسح ذاكرة الأخطاء
+                </button>
+              </div>
+
+              <div style={cardStyle}>
+                <h4 style={{ color: '#00ffcc' }}>VIN Info</h4>
+                <div style={{ fontSize: '0.9rem', color: '#00ffcc', fontFamily: 'monospace' }}>{data.vin}</div>
+              </div>
+
+              <div style={cardStyle}>
+                <h4 style={{ color: '#fff' }}>تحليل استهلاك الوقود</h4>
+                <ResponsiveContainer width="100%" height={150}>
+                  <BarChart data={history.slice(-8)}>
+                    <Bar dataKey="load" fill="#0066ff">
+                      {history.slice(-8).map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#0066ff' : '#00ffcc'} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </section>
           </div>
+        </main>
+      )}
 
-          {/* العمود الأوسط (المربعات الستة والرسم البياني) */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
-            
-            {/* منطقة العدادات */}
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '30px' }}>
-              <canvas id="rpm-gauge"></canvas>
-              <canvas id="temp-gauge"></canvas>
+      {activeTab === 'docs' && (
+        <div style={{ padding: '60px', maxWidth: '1000px', margin: '0 auto' }}>
+          <div style={cardStyle}>
+            <h2 style={{ color: '#00ffcc' }}>التوثيق الهندسي للمشروع</h2>
+            <hr style={{ borderColor: '#222', margin: '20px 0' }} />
+            <h3>1. خوارزمية التنبؤ (TITAN AI Core)</h3>
+            <p>النظام يستخدم معادلة تعتمد على "زمن رد الفعل الحراري" لتوقع الحرارة قبل وقوعها:</p>
+            <div style={{ background: '#000', padding: '20px', borderRadius: '15px', textAlign: 'center', fontSize: '1.4rem', color: '#00ffcc', fontFamily: 'monospace' }}>
+              {"Future_T = Current_T + (RPM_Factor * Load_Index)"}
             </div>
-
-            {/* المربعات الستة - إرجاعها وضبطها لتكون مرئية */}
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(3, 1fr)', 
-              gap: '15px',
-              padding: '10px',
-              background: 'rgba(255,255,255,0.02)',
-              borderRadius: '20px'
-            }}>
-              <div style={statBoxStyle('#00ffcc')}>
-                <small style={{ color: '#00ffcc', textTransform: 'uppercase', letterSpacing: '1px' }}>السرعة</small>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', margin: '10px 0' }}>{data.speed}</div>
-                <small style={{ color: '#444' }}>KM/H</small>
-              </div>
-
-              <div style={statBoxStyle('#ffae00')}>
-                <small style={{ color: '#ffae00' }}>البطارية</small>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', margin: '10px 0' }}>{data.voltage.toFixed(1)}</div>
-                <small style={{ color: '#444' }}>VOLTS</small>
-              </div>
-
-              <div style={statBoxStyle('#0066ff')}>
-                <small style={{ color: '#0066ff' }}>حمل المحرك</small>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', margin: '10px 0' }}>{data.load}</div>
-                <small style={{ color: '#444' }}>PERCENT %</small>
-              </div>
-
-              <div style={statBoxStyle('#e84393')}>
-                <small style={{ color: '#e84393' }}>الثروتل</small>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', margin: '10px 0' }}>{data.throttle}</div>
-                <small style={{ color: '#444' }}>POSITION %</small>
-              </div>
-
-              <div style={statBoxStyle('#00b894')}>
-                <small style={{ color: '#00b894' }}>حرارة السحب</small>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', margin: '10px 0' }}>{data.intake}</div>
-                <small style={{ color: '#444' }}>INTAKE °C</small>
-              </div>
-
-              <div style={statBoxStyle('#6c5ce7')}>
-                <small style={{ color: '#6c5ce7' }}>الوقود</small>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', margin: '10px 0' }}>{data.fuel_level}</div>
-                <small style={{ color: '#444' }}>LEVEL %</small>
-              </div>
-            </div>
-
-            {/* الرسم البياني */}
-            <div style={{ ...glassCard, height: '300px' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={history}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" />
-                  <XAxis dataKey="time" hide />
-                  <YAxis stroke="#333" />
-                  <Tooltip contentStyle={{ background: '#000', border: '1px solid #333' }} />
-                  <Area type="monotone" dataKey="temp" stroke="#00ffcc" fill="rgba(0, 255, 204, 0.1)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* العمود الأيسر */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div style={{ ...glassCard, border: '1px solid #ff1e1e' }}>
-              <h4 style={{ color: '#ff1e1e', margin: '0 0 10px 0' }}>الأعطال المسجلة</h4>
-              <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#ff1e1e' }}>{data.dtc_code || "P0000"}</div>
-              <p style={{ fontSize: '0.8rem', color: '#666' }}>الحالة: {data.dtc_code ? 'يجب الفحص فورا' : 'النظام سليم'}</p>
-            </div>
-
-            <div style={{ ...glassCard, background: '#050505' }}>
-              <h4 style={{ color: '#0066ff' }}>Raw Data Stream</h4>
-              <div style={{ fontFamily: 'monospace', fontSize: '0.7rem', color: '#00ff00' }}>
-                {history.slice(-5).map((h, i) => (
-                  <div key={i} style={{ borderBottom: '1px solid #111' }}>{`> RECV PID:0C VAL:${(h.rpm).toString(16)}`}</div>
-                ))}
-              </div>
-            </div>
-
-            <button style={{ width: '100%', padding: '15px', background: '#300', color: '#ff1e1e', border: '1px solid #ff1e1e', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}>
-              CLEAR ALL CODES
-            </button>
+            <h3>2. بروتوكولات الاتصال</h3>
+            <p>يتم جلب البيانات عبر مكتبة `obd` في بايثون ومن ثم تحويلها إلى `JSON` ليتم عرضها هنا في React بسرعة تحديث تصل إلى 1000ms.</p>
           </div>
         </div>
       )}
 
-      {/* تبويب المخطط التقني */}
-      {activeTab === 'help' && (
-        <div style={{ padding: '50px' }}>
-          <div style={glassCard}>
-            <h2>مشروع تخرج: TITAN PRO AI</h2>
-            <p>هذا النظام يستخدم خوارزميات التنبؤ لتحليل بيانات السيارة اللحظية.</p>
-            <h3>المعادلة الرياضية المستخدمة في التنبؤ:</h3>
-            <p style={{ background: '#000', padding: '20px', borderRadius: '10px', color: '#00ffcc', fontFamily: 'monospace' }}>
-              $$T_{future} = T_{now} + \int_{0}^{t} (RPM \cdot \alpha + Load \cdot \beta) dt$$
-            </p>
-            <p>تم تطوير الكود بواسطة أحمد لربط واجهات React مع حساسات OBD2.</p>
-          </div>
+      {/* Footer / Data Stream Bar */}
+      <footer style={{ position: 'fixed', bottom: 0, width: '100%', background: '#050505', borderTop: '1px solid #111', padding: '10px 50px', display: 'flex', gap: '30px', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+        <div style={{ color: '#00ffcc', fontSize: '0.8rem', animation: 'marquee 20s linear infinite' }}>
+           LIVE RAW DATA: RPM:{data.rpm} | SPEED:{data.speed} | TEMP:{data.temp} | LOAD:{data.load}% | VOLT:{data.voltage}V | THROTTLE:{data.throttle}% | FUEL:{data.fuel_level}% | STATUS: {connectionStatus} | ENGINE_RUNTIME: {data.runtime}
         </div>
-      )}
+      </footer>
 
-      {/* أسطر إضافية لضمان طول الكود ووضوح التعليقات */}
-      {/* 1. التأكد من أن جميع الحاويات تستخدم flexbox للتوزيع الصحيح.
-          2. إضافة منطق التنبؤ الحراري المعتمد على الأوزان.
-          3. ربط ملفات الـ JS مع الـ Python Backend عبر Fetch API.
-          4. استخدام مكتبة Canvas Gauges لتوليد عدادات احترافية.
-          5. دعم وضع الـ Dark Mode الكامل (100% Black Background).
-      */}
+      <style>{`
+        @keyframes marquee {
+          0% { transform: translateX(100%); }
+          100% { transform: translateX(-100%); }
+        }
+        body { margin: 0; }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: #000; }
+        ::-webkit-scrollbar-thumb { background: #222; border-radius: 10px; }
+      `}</style>
     </div>
   );
 }
