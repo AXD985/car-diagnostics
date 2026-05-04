@@ -4,23 +4,15 @@ from flask_cors import CORS
 import random
 import time
 from datetime import datetime
-import obd 
+import math
+import os  # أضفنا مكتبة os لقراءة إعدادات السيرفر
 
 app = Flask(__name__)
-CORS(app)
+# تفعيل CORS للسماح لأي واجهة (Frontend) بالاتصال بالسيرفر
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 start_time = datetime.now()
-connection = None
-
-def get_connection():
-    global connection
-    if connection is None or not connection.is_connected():
-        try:
-            # محاولة الاتصال التلقائي
-            connection = obd.OBD() 
-        except:
-            connection = None
-    return connection
+counter = 0
 
 def get_runtime():
     delta = datetime.now() - start_time
@@ -28,79 +20,43 @@ def get_runtime():
 
 @app.route('/api/obd2', methods=['GET'])
 def get_obd_data():
-    conn = get_connection()
+    global counter
+    counter += 0.1 
     
-    if conn and conn.is_connected():
-        try:
-            # --- بيانات المحرك الحية ---
-            rpm = conn.query(obd.commands.RPM).value.magnitude
-            speed = conn.query(obd.commands.SPEED).value.magnitude
-            temp = conn.query(obd.commands.COOLANT_TEMP).value.magnitude
-            load = conn.query(obd.commands.ENGINE_LOAD).value.magnitude
-            voltage = conn.query(obd.commands.ELM_VOLTAGE).value.magnitude
-            
-            # --- بيانات الـ ECU (الإضافة الجديدة) ---
-            # جلب بروتوكول الاتصال (مثل CAN BUS)
-            ecu_protocol = conn.protocol_name()
-            # جلب رقم الـ VIN الحقيقي
-            vin_query = conn.query(obd.commands.VIN)
-            real_vin = str(vin_query.value) if vin_query.value else "UNKNOWN-VIN"
-            
-            return jsonify({
-                "rpm": int(rpm),
-                "speed": int(speed),
-                "temp": int(temp),
-                "voltage": round(float(voltage), 1),
-                "load": int(load),
-                "vin": real_vin,
-                "predicted_temp": round(temp + (load * 0.05), 1),
-                "runtime": get_runtime(),
-                # بيانات الـ ECU المضافة
-                "ecu_info": {
-                    "protocol": ecu_protocol,
-                    "status": "ACTIVE",
-                    "connection_type": "ELM327-AUTO",
-                    "processor_load": random.randint(5, 15) # محاكاة لضغط المعالج
-                },
-                "status": "CONNECTED"
-            })
-        except Exception as e:
-            print(f"Error fetching data: {e}")
+    rpm = int(1900 + 1100 * math.sin(counter))
+    speed = int(60 + 40 * math.sin(counter * 0.5))
+    temp = int(90 + 2 * math.sin(counter * 0.1))
+    load = int(30 + 20 * math.cos(counter))
+    voltage = round(13.8 + 0.2 * math.sin(counter * 0.05), 1)
 
-    # وضع المحاكاة (Demo Mode) مع بيانات ECU وهمية
-    rpm = random.randint(800, 3200)
-    temp = random.randint(88, 98)
-    load = random.randint(15, 70)
-    
     return jsonify({
-        "rpm": rpm,
-        "speed": random.randint(20, 110),
+        "rpm": abs(rpm),
+        "speed": abs(speed),
         "temp": temp,
-        "voltage": round(random.uniform(13.6, 14.1), 1),
-        "load": load,
+        "voltage": voltage,
+        "load": abs(load),
         "vin": "TITAN-PRO-AI-2026",
-        "predicted_temp": round(temp + (load * 0.05), 1),
+        "predicted_temp": round(temp + (abs(load) * 0.05) + 1.5, 1),
         "runtime": get_runtime(),
         "ecu_info": {
             "protocol": "ISO 15765-4 (CAN 11/500)",
-            "status": "EMULATED",
-            "connection_type": "VIRTUAL-LINK",
-            "processor_load": random.randint(1, 5)
+            "status": "ONLINE_EMULATION",
+            "connection_type": "RENDER-CLOUD",
+            "processor_load": random.randint(8, 12)
         },
-        "status": "DEMO_MODE"
+        "status": "DEMO_MODE",
+        "throttle": int(20 + 15 * math.sin(counter)),
+        "fuel_level": 75,
+        "dtc_code": "" 
     })
 
 @app.route('/api/command', methods=['POST'])
 def send_command():
-    conn = get_connection()
-    data = request.json
-    cmd_name = data.get('command')
+    return jsonify({"status": "success", "msg": "Command Executed via Cloud"})
 
-    if conn and conn.is_connected() and cmd_name == "CLEAR_DTC":
-        conn.query(obd.commands.CLEAR_DTC)
-        return jsonify({"status": "success", "msg": "ECU Memory Cleared"})
-    
-    return jsonify({"status": "success", "msg": "Command Executed in Demo"})
-
+# هذا الجزء مهم جداً لمنصة Render
 if __name__ == '__main__':
-    app.run(port=5000, debug=True)
+    # Render يحدد المنفذ تلقائياً عبر متغير بيئة يسمى PORT
+    port = int(os.environ.get("PORT", 5000))
+    # التشغيل على 0.0.0.0 ضروري ليتمكن السيرفر من استقبال الطلبات الخارجية
+    app.run(host='0.0.0.0', port=port)
