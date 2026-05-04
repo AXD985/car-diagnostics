@@ -59,4 +59,4 @@ if __name__ == '__main__':
     # Render يحدد المنفذ تلقائياً عبر متغير بيئة يسمى PORT
     port = int(os.environ.get("PORT", 5000))
     # التشغيل على 0.0.0.0 ضروري ليتمكن السيرفر من استقبال الطلبات الخارجية
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port) 
